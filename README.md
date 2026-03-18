@@ -25,6 +25,14 @@ If you want a personal, single-machine AI boss that feels fast, demanding, and c
    python main.py
    ```
 
+## Resetting Memory
+
+If you want to reset the Boss's memory, you can use the following command:
+
+```bash
+python reset-boss-memory.py
+```
+
 ## Key subsystems
 
 - **Master Control Agent** (`boss.py`) — Generates tasks for you based on its own incomprehensible internal logic.

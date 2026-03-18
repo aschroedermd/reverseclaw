@@ -5,8 +5,12 @@ venv/
 env/
 ENV/
 claw-reference/
+
+# Application State
+user_profile.json
 human-work/*
 !human-work/.gitkeep
+human.md
 
 # Python
 __pycache__/
