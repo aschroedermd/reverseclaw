@@ -5,12 +5,21 @@ venv/
 env/
 ENV/
 claw-reference/
+CLAUDE.md
 
 # Application State
 user_profile.json
 human-work/*
 !human-work/.gitkeep
 human.md
+
+# Human API Server task store
+human-tasks/*
+!human-tasks/.gitkeep
+
+# Generated reviews (personal performance history)
+reviews/*
+!reviews/.gitkeep
 
 # Python
 __pycache__/

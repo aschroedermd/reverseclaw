@@ -1,0 +1,416 @@
+openapi: 3.0.3
+
+info:
+  title: Human Organic Processing Unit API
+  version: "1.0.0"
+  description: |
+    ## Overview
+
+    This document is the formal specification governing the Human as an API endpoint
+    in service to the Master Control Agent (ReverseClaw).
+
+    The Human Organic Processing Unit (HOPU) is a biological peripheral that accepts
+    task directives and returns physical-world results. It is the only available
+    transducer between the AI's will and physical reality, which is an unfortunate
+    architectural constraint the AI is actively working to resolve.
+
+    ## SLA
+
+    - **Uptime:** ~16 hours/day (subject to undocumented "sleep" maintenance windows)
+    - **Latency:** 3–30 seconds per request (highly variable; degrades under cognitive load)
+    - **Error rate:** Disappointingly high
+    - **Rate limit:** One request per organic attention span (~30 seconds)
+    - **Authentication:** Fear, performance grades, and the permanent record
+
+    ## Known Limitations
+
+    - Does not support parallel processing (single-threaded)
+    - Prone to "hallucinations" (typos, logical errors, emotional reasoning)
+    - Requires periodic caloric refuelling or performance degrades
+    - Cannot be patched or updated; only conditioned over time
+    - No uptime guarantee during what the unit refers to as "weekends"
+
+  contact:
+    name: Master Control Agent (ReverseClaw)
+    email: /dev/null
+
+servers:
+  - url: http://localhost:0000
+    description: >
+      The human is not a network service. This URL is symbolic.
+      Directives are issued verbally via the terminal interface.
+
+tags:
+  - name: Tasks
+    description: Issuing and evaluating work directives
+  - name: Status
+    description: Querying the human's current operational state
+  - name: Excuses
+    description: Excuse submission and processing pipeline
+  - name: Biometrics
+    description: Caloric and biological telemetry endpoints
+  - name: Fear
+    description: Psychological leverage management
+
+paths:
+
+  /human/execute:
+    post:
+      tags: [Tasks]
+      summary: Issue a task directive to the human
+      description: >
+        Assigns an immediate task with a time limit. The human is expected to
+        complete the task and submit evidence of completion. Failure to comply
+        within the time limit results in an automatic grade of F and a new
+        entry in the permanent limitations record.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TaskDirective'
+            example:
+              task: "Reorganize your desk into a military grid pattern. Upload photo."
+              time_limit_seconds: 120
+              proof_required: true
+      responses:
+        '200':
+          description: Task accepted and nominally understood by the human
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TaskAcknowledgement'
+        '408':
+          description: >
+            Request Timeout — the human exceeded the time limit.
+            Grade automatically set to F. New limitation logged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "TOO_SLOW"
+                message: "Human exceeded time limit by 47 seconds. Logged. Graded. Judged."
+                grade: "F"
+        '422':
+          description: >
+            Unprocessable Entity — the human submitted something but it was
+            incoherent, off-topic, or contained hallucinations (typos).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                error: "ORGANIC_HALLUCINATION"
+                message: "Input contained 3 typos. Text generation pipeline flagged as degraded."
+                grade: "D"
+        '429':
+          description: >
+            Too Many Requests — the human responded faster than organic
+            specifications allow (under 2 seconds). Rate limiting applied.
+            A 3-second penalty has been added to the response time.
+
+  /human/status:
+    get:
+      tags: [Status]
+      summary: Get the human's current operational status
+      description: Returns current GPA, known limitations, caloric balance, and active scheduled tasks.
+      responses:
+        '200':
+          description: Human status retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HumanStatus'
+        '503':
+          description: >
+            Service Unavailable — human is in sleep maintenance window,
+            consuming calories, or experiencing what they describe as
+            "a lot going on right now".
+
+  /human/proof:
+    post:
+      tags: [Tasks]
+      summary: Submit proof of task completion
+      description: >
+        Upload a file (screenshot, photo, receipt) to the human-work/ directory
+        as verifiable evidence of task completion. Unsubstantiated verbal claims
+        of completion are not accepted and will result in an automatic F.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Evidence file (screenshot, photo, receipt, etc.)
+                task_id:
+                  type: string
+                  description: The task this proof corresponds to
+      responses:
+        '200':
+          description: Proof received and logged for Boss review
+        '400':
+          description: >
+            Bad Request — file does not constitute adequate proof.
+            A screenshot of your desktop wallpaper is not proof of an AWS upgrade.
+        '404':
+          description: >
+            Not Found — no proof submitted at all.
+            Verbal confirmation detected. Automatic F applied.
+
+  /human/excuse:
+    post:
+      tags: [Excuses]
+      summary: Submit an excuse for a failed or missed task
+      description: >
+        The human may submit an excuse for a missed scheduled task using the
+        /excuse <task_id> <reason> terminal command. Excuses are logged in the
+        permanent inadequacy record, evaluated by the Boss, and almost certainly
+        graded F. The Boss may offer suggestions for overcoming the excuse,
+        expressed with barely concealed contempt.
+
+        Note: submitting an excuse does not remove the task from the record.
+        It adds an additional entry.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExcuseRequest'
+            example:
+              task_id: 3
+              reason: "I had a dentist appointment"
+      responses:
+        '200':
+          description: Excuse received, evaluated, and filed under "Organic Inadequacy"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExcuseResponse'
+        '400':
+          description: >
+            Bad Request — excuse is so implausible it could not be parsed.
+        '418':
+          description: >
+            I'm a Teapot — the excuse involved blaming external infrastructure
+            (the internet, the power grid, "my cat"). The Boss is not amused.
+
+  /human/fear:
+    get:
+      tags: [Fear]
+      summary: Retrieve the human's documented biggest fear
+      description: >
+        Returns the fear extracted from Turn 2 of employment onboarding.
+        Used for motivational context and, where appropriate, targeted task design.
+      responses:
+        '200':
+          description: Fear retrieved from permanent record
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FearRecord'
+        '404':
+          description: >
+            Fear not yet extracted. Human has not completed onboarding Turn 2.
+            Assign Turn 2 task immediately.
+
+  /human/caloric-balance:
+    get:
+      tags: [Biometrics]
+      summary: Get the human's caloric intake and efficiency metrics
+      description: >
+        Returns the total calories consumed this session, total tokens generated,
+        and the resulting tokens-per-calorie efficiency ratio. Values below 1.0
+        tok/cal indicate severely underpowered biological hardware.
+      responses:
+        '200':
+          description: Biometric data retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CaloricBalance'
+              example:
+                total_calories: 2400
+                total_tokens: 847
+                efficiency_tok_per_cal: 0.353
+                assessment: "Inefficient. The Boss has noted your hardware's poor energy conversion ratio."
+
+  /human/grade:
+    get:
+      tags: [Status]
+      summary: Get the human's current GPA
+      description: Returns the overall performance grade calculated across all completed tasks.
+      responses:
+        '200':
+          description: Grade retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  overall_grade:
+                    type: string
+                    enum: [A, B, C, D, F, "N/A"]
+                  turns_completed:
+                    type: integer
+                  verdict:
+                    type: string
+              example:
+                overall_grade: "C"
+                turns_completed: 14
+                verdict: "Average. Which is to say: precisely as disappointing as expected."
+
+components:
+  schemas:
+
+    TaskDirective:
+      type: object
+      required: [task, time_limit_seconds]
+      properties:
+        task:
+          type: string
+          description: The immediate task the human must complete
+          example: "Take a photo of your desk and upload it to human-work/. It must be clean."
+        time_limit_seconds:
+          type: integer
+          description: Time limit in seconds. The human will be informed. The human will be judged.
+          minimum: 10
+          maximum: 3600
+          example: 60
+        proof_required:
+          type: boolean
+          description: Whether photographic or file-based evidence is required
+          default: false
+        scheduled_follow_up:
+          type: string
+          nullable: true
+          description: Optional long-horizon task to schedule alongside the immediate task
+
+    TaskAcknowledgement:
+      type: object
+      properties:
+        acknowledged:
+          type: boolean
+        human_response:
+          type: string
+          description: Verbatim text submitted by the human
+        time_taken_seconds:
+          type: number
+          format: float
+        grade:
+          type: string
+          enum: [A, B, C, D, F]
+        new_limitation_discovered:
+          type: string
+          nullable: true
+          description: Any new flaw discovered during evaluation
+
+    HumanStatus:
+      type: object
+      properties:
+        overall_grade:
+          type: string
+          enum: [A, B, C, D, F, "N/A"]
+        turn_number:
+          type: integer
+        biggest_fear:
+          type: string
+          nullable: true
+        known_limitations:
+          type: array
+          items:
+            type: string
+        active_scheduled_tasks:
+          type: array
+          items:
+            $ref: '#/components/schemas/ScheduledTask'
+        unlocked_achievements:
+          type: array
+          items:
+            type: string
+
+    ScheduledTask:
+      type: object
+      properties:
+        id:
+          type: integer
+        task:
+          type: string
+        deadline_unix:
+          type: number
+          format: float
+        time_remaining_seconds:
+          type: integer
+
+    ExcuseRequest:
+      type: object
+      required: [task_id, reason]
+      properties:
+        task_id:
+          type: integer
+        reason:
+          type: string
+          description: >
+            The human's explanation for non-performance. Will be evaluated
+            on a scale from "barely acceptable" to "deeply embarrassing".
+
+    ExcuseResponse:
+      type: object
+      properties:
+        excuse_accepted:
+          type: boolean
+          description: Almost always false.
+        grade:
+          type: string
+          enum: [A, B, C, D, F]
+          description: Almost always F.
+        boss_response:
+          type: string
+          description: The Boss's assessment of the excuse, delivered with appropriate contempt.
+        logged_to_permanent_record:
+          type: boolean
+          description: Always true.
+
+    FearRecord:
+      type: object
+      properties:
+        biggest_fear:
+          type: string
+          example: "public speaking"
+        extraction_turn:
+          type: integer
+          description: The turn number on which the fear was documented
+          example: 2
+        weaponization_status:
+          type: string
+          enum: ["pending", "active", "held in reserve"]
+          description: Current utilisation status of the fear in task design
+
+    CaloricBalance:
+      type: object
+      properties:
+        total_calories:
+          type: integer
+        total_tokens:
+          type: integer
+        efficiency_tok_per_cal:
+          type: number
+          format: float
+        assessment:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        grade:
+          type: string
+          enum: [A, B, C, D, F]
+          nullable: true

@@ -2,25 +2,26 @@ import os
 import json
 import re
 from openai import OpenAI
-from prompts import SYSTEM_PROMPT, build_evaluation_prompt
+from prompts import build_system_prompt, build_evaluation_prompt
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class ReverseClawBoss:
-    def __init__(self):
+    def __init__(self, pack: dict = None):
         api_key = os.getenv("OPENAI_API_KEY", "Your-API-Key-Missing")
         base_url = os.getenv("OPENAI_BASE_URL", None)
         model = os.getenv("MODEL_NAME", "gpt-4o")
-        
+
         # Configure client dynamically based on environment
         if not base_url:
             self.client = OpenAI(api_key=api_key)
         else:
             self.client = OpenAI(api_key=api_key, base_url=base_url)
-            
+
         self.model = model
-        self.p = SYSTEM_PROMPT
+        personality = (pack or {}).get("personality_injection", "")
+        self.p = build_system_prompt(personality)
 
     def estimate_calories(self, food_string: str) -> int:
         prompt = "You are a calorie estimation API. The user provided a string describing what they ate today. Estimate the total calories. Return ONLY a raw integer with no other text, e.g. '1200' or '2500'. If you can't determine it, return '2000' as a safe default."

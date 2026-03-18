@@ -15,6 +15,7 @@ class UserMemory:
         self.biggest_fear: str = None
         self.total_tokens_generated: int = 0
         self.total_calories_consumed: int = 0
+        self.unlocked_achievements: List[str] = []
         self._load()
 
     def read_human_md(self):
@@ -42,6 +43,7 @@ class UserMemory:
                     self.biggest_fear = data.get("biggest_fear", None)
                     self.total_tokens_generated = data.get("total_tokens_generated", 0)
                     self.total_calories_consumed = data.get("total_calories_consumed", 0)
+                    self.unlocked_achievements = data.get("unlocked_achievements", [])
             except json.JSONDecodeError:
                 pass
 
@@ -56,7 +58,8 @@ class UserMemory:
                 "turn_number": self.turn_number,
                 "biggest_fear": self.biggest_fear,
                 "total_tokens_generated": self.total_tokens_generated,
-                "total_calories_consumed": self.total_calories_consumed
+                "total_calories_consumed": self.total_calories_consumed,
+                "unlocked_achievements": self.unlocked_achievements,
             }, f, indent=4)
 
     def add_limitation(self, limitation: str):
@@ -93,12 +96,18 @@ class UserMemory:
             self.biggest_fear = fear
             self.save()
 
-    def add_performance(self, task: str, grade: str, time_taken: float, feedback: str):
+    def unlock_achievement(self, achievement_id: str):
+        if achievement_id not in self.unlocked_achievements:
+            self.unlocked_achievements.append(achievement_id)
+            self.save()
+
+    def add_performance(self, task: str, grade: str, time_taken: float, feedback: str, time_limit: int = 30):
         self.performance_history.append({
             "task": task,
             "grade": grade,
             "time_taken": time_taken,
-            "feedback": feedback
+            "time_limit": time_limit,
+            "feedback": feedback,
         })
         self._recalculate_grade()
         self.save()

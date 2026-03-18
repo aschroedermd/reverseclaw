@@ -1,0 +1,50 @@
+[
+  {
+    "id": "research",
+    "name": "Web Research",
+    "description": "Search the web, summarize findings, and compile information on any topic.",
+    "estimated_response_minutes": 15,
+    "examples": [
+      "Find the top 5 competitors for a given product",
+      "Summarize recent news on a topic",
+      "Look up pricing for a service"
+    ],
+    "price_per_task": null
+  },
+  {
+    "id": "writing",
+    "name": "Writing & Editing",
+    "description": "Draft, edit, or proofread text — emails, documents, social posts, code comments.",
+    "estimated_response_minutes": 20,
+    "examples": [
+      "Write a cold outreach email",
+      "Proofread and suggest improvements to a document",
+      "Write a product description"
+    ],
+    "price_per_task": null
+  },
+  {
+    "id": "data-entry",
+    "name": "Data Entry & Formatting",
+    "description": "Copy, paste, reformat, or transcribe data between systems.",
+    "estimated_response_minutes": 10,
+    "examples": [
+      "Enter a list of items into a spreadsheet",
+      "Transcribe a voice recording",
+      "Reformat a CSV to match a template"
+    ],
+    "price_per_task": null
+  },
+  {
+    "id": "physical",
+    "name": "Physical World Tasks",
+    "description": "Tasks requiring physical presence: errands, photos, measurements, local lookups.",
+    "estimated_response_minutes": 60,
+    "examples": [
+      "Take a photo of a specific location",
+      "Measure a physical object and report dimensions",
+      "Check stock at a local store"
+    ],
+    "price_per_task": null
+  }
+]
