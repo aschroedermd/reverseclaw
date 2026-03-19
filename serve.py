@@ -381,6 +381,7 @@ def main():
 
     admin_token = os.getenv("HUMAN_SERVER_ADMIN_TOKEN", "").strip() or api_key
     max_queue = int(os.getenv("HUMAN_SERVER_MAX_QUEUE", "10"))
+    max_queue_per_caller = int(os.getenv("HUMAN_SERVER_MAX_QUEUE_PER_CALLER", "3"))
 
     # Import and configure FastAPI app
     from human_server.server import app
@@ -396,6 +397,7 @@ def main():
     app.state.api_key = api_key
     app.state.admin_token = admin_token
     app.state.max_queue = max_queue
+    app.state.max_queue_per_caller = max_queue_per_caller
     app.state.capabilities_file = args.capabilities
     app.state.notifier = None  # set after channel init
 

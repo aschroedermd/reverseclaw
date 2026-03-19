@@ -1,14 +1,16 @@
 """FastAPI application for the Human API Server."""
 
+import ipaddress
 import json
 import os
+import socket
 import threading
 from datetime import datetime
 from typing import Optional
+from urllib.parse import urlparse
 
 import requests
 from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from .models import (
     AvailabilityStatus,
@@ -30,7 +32,56 @@ app = FastAPI(
 )
 
 MAX_QUEUE_DEFAULT = 10
+MAX_QUEUE_PER_CALLER_DEFAULT = 3
 CAPABILITIES_FILE_DEFAULT = "capabilities.json"
+
+
+def _validate_callback_url(url: str) -> Optional[str]:
+    """
+    Returns an error string if the URL is unsafe, None if it's fine.
+    Blocks non-HTTPS schemes and URLs that resolve to private/loopback IPs (SSRF).
+    """
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return "callback_url is not a valid URL"
+
+    if parsed.scheme != "https":
+        return "callback_url must use HTTPS (not http or other schemes)"
+
+    hostname = parsed.hostname
+    if not hostname:
+        return "callback_url has no hostname"
+
+    # Resolve hostname and reject private/reserved IP ranges
+    old_timeout = socket.getdefaulttimeout()
+    try:
+        socket.setdefaulttimeout(3)
+        addrs = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return f"callback_url hostname '{hostname}' could not be resolved"
+    finally:
+        socket.setdefaulttimeout(old_timeout)
+
+    for addr in addrs:
+        try:
+            ip = ipaddress.ip_address(addr[4][0])
+            if any([
+                ip.is_private,
+                ip.is_loopback,
+                ip.is_link_local,
+                ip.is_reserved,
+                ip.is_multicast,
+                ip.is_unspecified,
+            ]):
+                return (
+                    f"callback_url resolves to a private or reserved IP ({ip}). "
+                    "Callbacks to internal network addresses are not permitted."
+                )
+        except ValueError:
+            continue
+
+    return None
 
 
 def _load_capabilities() -> list[HumanCapability]:
@@ -99,9 +150,16 @@ def create_task(task_req: TaskRequest):
     store = app.state.store
     availability = getattr(app.state, "availability", AvailabilityStatus.available)
     max_queue = getattr(app.state, "max_queue", MAX_QUEUE_DEFAULT)
+    max_per_caller = getattr(app.state, "max_queue_per_caller", MAX_QUEUE_PER_CALLER_DEFAULT)
 
     if availability == AvailabilityStatus.offline or availability == "offline":
         raise HTTPException(status_code=503, detail="Human is currently offline")
+
+    # Validate callback_url before accepting the task (SSRF prevention)
+    if task_req.callback_url:
+        err = _validate_callback_url(task_req.callback_url)
+        if err:
+            raise HTTPException(status_code=422, detail=f"Invalid callback_url: {err}")
 
     counts = store.count_by_status()
     queued = counts.get("queued", 0)
@@ -111,6 +169,21 @@ def create_task(task_req: TaskRequest):
             status_code=429,
             detail=f"Queue full ({max_queue} active tasks). Try again later.",
         )
+
+    # Per-caller queue limit (prevents one caller from monopolising the queue)
+    if task_req.caller_id:
+        caller_active = sum(
+            1 for t in store.list_all()
+            if t.caller_id == task_req.caller_id and t.status in ("queued", "in_progress")
+        )
+        if caller_active >= max_per_caller:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Caller '{task_req.caller_id}' already has {caller_active} active task(s). "
+                    f"Limit per caller is {max_per_caller}. Complete or cancel existing tasks first."
+                ),
+            )
 
     task = TaskRecord(**task_req.model_dump())
     store.save(task)
