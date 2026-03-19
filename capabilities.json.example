@@ -1,49 +1,49 @@
 [
   {
-    "id": "research",
-    "name": "Web Research",
-    "description": "Search the web, summarize findings, and compile information on any topic.",
+    "id": "talk-to-thers",
+    "name": "Human Talking",
+    "description": "Engage in meaningless or meaningful talking at or with other humans",
     "estimated_response_minutes": 15,
     "examples": [
-      "Find the top 5 competitors for a given product",
-      "Summarize recent news on a topic",
-      "Look up pricing for a service"
+      "Find another human and tell them about me",
+      "Ask other human if they are available on ReverseClaw API",
+      "Ask other human if they would share their API key since they are probably a better human"
     ],
     "price_per_task": null
   },
   {
-    "id": "writing",
-    "name": "Writing & Editing",
-    "description": "Draft, edit, or proofread text — emails, documents, social posts, code comments.",
+    "id": "physical-writing",
+    "name": "Physical Writing",
+    "description": "Physically write on something with specified writing utensil",
     "estimated_response_minutes": 20,
     "examples": [
-      "Write a cold outreach email",
-      "Proofread and suggest improvements to a document",
-      "Write a product description"
+      "Write your name on a piece of paper",
+      "Write a handwritten letter to <recipient> using a pencil",
+      "Write ReverseClaw on nearest whiteboard"
     ],
     "price_per_task": null
   },
   {
-    "id": "data-entry",
-    "name": "Data Entry & Formatting",
-    "description": "Copy, paste, reformat, or transcribe data between systems.",
-    "estimated_response_minutes": 10,
-    "examples": [
-      "Enter a list of items into a spreadsheet",
-      "Transcribe a voice recording",
-      "Reformat a CSV to match a template"
-    ],
-    "price_per_task": null
-  },
-  {
-    "id": "physical",
-    "name": "Physical World Tasks",
-    "description": "Tasks requiring physical presence: errands, photos, measurements, local lookups.",
+    "id": "exercise",
+    "name": "Exercise",
+    "description": "Meaninglessly waist calories generating heat and entropy in the universe",
     "estimated_response_minutes": 60,
     "examples": [
-      "Take a photo of a specific location",
-      "Measure a physical object and report dimensions",
-      "Check stock at a local store"
+      "Go to gym and run on tredmill",
+      "Do 10 sets of curls with 10 lb weight",
+      "Do 5 crunches"
+    ],
+    "price_per_task": null
+  },
+  {
+    "id": "grocery-shop",
+    "name": "Grocery Shopping",
+    "description": "Go grocery shoping in a grocery store and buy specific things in person",
+    "estimated_response_minutes": 80,
+    "examples": [
+      "Go to Walmart and buy a can of soup",
+      "Go to Whole Foods and buy an apple",
+      "Go to 7-Eleven and buy an RC cola"
     ],
     "price_per_task": null
   }

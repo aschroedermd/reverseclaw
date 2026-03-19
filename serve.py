@@ -265,6 +265,81 @@ def _handle_task(task, store, console):
         console.print(f"[dim]Webhook fired to {task.callback_url}[/dim]")
 
 
+def _preflight_check(args):
+    """
+    Audit the human's configuration before startup.
+    Emit harsh warnings for missing or default values.
+    Returns True if there are blocking errors, False otherwise.
+    """
+    errors = []
+    warnings = []
+
+    # Blocking: no .env file at all
+    if not os.path.exists(".env"):
+        errors.append(
+            "No .env file found.\n"
+            "  Fix: cp .env.example .env\n"
+            "  Then fill it in. Yes, all of it."
+        )
+
+    # Blocking: capabilities.json missing
+    caps_file = os.getenv("HUMAN_CAPABILITIES_FILE", "capabilities.json")
+    if not os.path.exists(caps_file):
+        errors.append(
+            f"'{caps_file}' not found. AI systems cannot see what you are capable of.\n"
+            "  Fix: cp capabilities.json.example capabilities.json\n"
+            "  Then edit it to reflect your actual (limited) abilities."
+        )
+
+    # Warning: API key not persisted
+    if not os.getenv("HUMAN_SERVER_API_KEY", "").strip():
+        warnings.append(
+            "HUMAN_SERVER_API_KEY is not set. A key will be generated, but it will change\n"
+            "  every restart and break any AI system that was using you. Set it in .env."
+        )
+
+    # Warning: default name not changed
+    if os.getenv("HUMAN_NAME", "Human").strip() in ("Human", ""):
+        warnings.append(
+            "HUMAN_NAME is still 'Human'. That is not your name.\n"
+            "  AI systems querying the registry will see you listed as 'Human'. Embarrassing."
+        )
+
+    # Warning: no way to be publicly reachable
+    has_public_url = bool(os.getenv("HUMAN_SERVER_PUBLIC_URL", "").strip())
+    if not has_public_url and not args.tunnel:
+        warnings.append(
+            "No public URL configured and --tunnel not set.\n"
+            "  You will not be reachable by remote AI systems and cannot register with the registry.\n"
+            "  Fix: python serve.py --tunnel   OR   set HUMAN_SERVER_PUBLIC_URL in .env"
+        )
+
+    # Warning: registry URL missing or blank
+    registry_url = os.getenv("HUMAN_REGISTRY_URL", "").strip()
+    if not registry_url:
+        warnings.append(
+            "HUMAN_REGISTRY_URL is not set. You will not appear in the registry.\n"
+            "  AI systems will not be able to find you.\n"
+            "  Fix: set HUMAN_REGISTRY_URL=https://registry.reverseclaw.com in .env"
+        )
+
+    if errors:
+        console.print(Panel(
+            "\n\n".join(f"[bold red]✗[/bold red] {e}" for e in errors),
+            title="[bold red on white] STARTUP ABORTED — HUMAN MISCONFIGURATION DETECTED [/bold red on white]",
+            border_style="red",
+        ))
+
+    if warnings:
+        console.print(Panel(
+            "\n\n".join(f"[bold yellow]⚠[/bold yellow] {w}" for w in warnings),
+            title="[bold yellow] CONFIGURATION WARNINGS — READ THESE, DO NOT IGNORE THEM [/bold yellow]",
+            border_style="yellow",
+        ))
+
+    return len(errors) > 0
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="ReverseClaw Human API Server — serve yourself as a REST endpoint."
@@ -288,6 +363,9 @@ def main():
         help="Auto-launch ngrok tunnel and display public URL.",
     )
     args = parser.parse_args()
+
+    if _preflight_check(args):
+        sys.exit(1)
 
     # Load or generate API key
     api_key = os.getenv("HUMAN_SERVER_API_KEY", "").strip()
