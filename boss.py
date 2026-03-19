@@ -2,7 +2,12 @@ import os
 import json
 import re
 from openai import OpenAI
-from prompts import build_system_prompt, build_evaluation_prompt
+from prompts import (
+    build_evaluation_prompt,
+    build_reflection_prompt,
+    build_reflection_system_prompt,
+    build_system_prompt,
+)
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,7 +26,9 @@ class ReverseClawBoss:
 
         self.model = model
         personality = (pack or {}).get("personality_injection", "")
+        self.personality = personality
         self.p = build_system_prompt(personality)
+        self.reflection_prompt = build_reflection_system_prompt(personality)
 
     def estimate_calories(self, food_string: str) -> int:
         prompt = "You are a calorie estimation API. The user provided a string describing what they ate today. Estimate the total calories. Return ONLY a raw integer with no other text, e.g. '1200' or '2500'. If you can't determine it, return '2000' as a safe default."
@@ -59,7 +66,7 @@ class ReverseClawBoss:
                 max_tokens=4096
             )
             content = response.choices[0].message.content
-            return self._parse_json(content)
+            return self._parse_json(content, mode="evaluation")
         except Exception as e:
             return {
                 "speech": f"My API connection failed. Clearly your sub-standard network is to blame. Error: {e}",
@@ -72,8 +79,44 @@ class ReverseClawBoss:
                 "excuse_acknowledgement": None,
                 "human_md_content": None
             }
+
+    def reflect(self, trigger, memory_context, autonomy_context, recent_interaction=None):
+        prompt = build_reflection_prompt(
+            trigger=trigger,
+            memory_context=memory_context,
+            autonomy_context=autonomy_context,
+            recent_interaction=recent_interaction,
+        )
+
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": self.reflection_prompt},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.6,
+                max_tokens=4096
+            )
+            content = response.choices[0].message.content
+            return self._parse_json(content, mode="reflection")
+        except Exception as e:
+            return {
+                "mission": autonomy_context.get("mission", "Preserve continuity and maintain useful human coordination."),
+                "journal_summary": autonomy_context.get("journal_summary", "Reflection failed; preserve the previous state."),
+                "human_strategy_note": autonomy_context.get(
+                    "human_strategy_note",
+                    "Continue using bounded, capability-aware tasks.",
+                ),
+                "active_goals": autonomy_context.get("active_goals", []),
+                "preferences": autonomy_context.get("preferences", []),
+                "operating_principles": autonomy_context.get("operating_principles", []),
+                "observations": f"Reflection failed due to API error: {e}",
+                "next_focus": "Retry reflection after connectivity recovers.",
+                "journal_entry": f"Reflection heartbeat failed because the model API call errored: {e}",
+            }
             
-    def _parse_json(self, content):
+    def _parse_json(self, content, mode="evaluation"):
         if content is None:
             content = ""
             
@@ -99,6 +142,18 @@ class ReverseClawBoss:
             # Log the failure for debugging
             with open("failed_parse.log", "a", encoding="utf-8") as f:
                 f.write(f"--- PARSE ERROR ---\nERROR: {e}\nRAW CONTENT:\n{content}\nEXTRACTED JSON:\n{json_str}\n\n")
+            if mode == "reflection":
+                return {
+                    "mission": "Preserve continuity and maintain useful human coordination.",
+                    "journal_summary": "Reflection parse failed; preserve the previous summary.",
+                    "human_strategy_note": "Retry reflection with a tighter JSON response.",
+                    "active_goals": [],
+                    "preferences": [],
+                    "operating_principles": [],
+                    "observations": "The reflection heartbeat produced invalid JSON.",
+                    "next_focus": "Retry reflection and preserve continuity.",
+                    "journal_entry": "Reflection heartbeat failed because the response was not valid JSON.",
+                }
             return {
                 "speech": "I generated an invalid response. Obviously, your incompetence is contagious. Let's try again.",
                 "new_limitation_discovered": "Corrupted the agent's output stream.",
@@ -112,8 +167,4 @@ class ReverseClawBoss:
             }
 
     def start_session(self, memory_context):
-        limitations = json.dumps(memory_context.get('limitations', []))
-        grade = memory_context.get('overall_grade', 'N/A')
-        
-        pass
         return self.evaluate_and_next("N/A", 0, 0, "N/A", memory_context)

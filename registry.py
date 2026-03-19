@@ -39,9 +39,16 @@ def main():
     args = parser.parse_args()
 
     from registry_server.server import app
+    from registry_server.ledger_store import LedgerStore
+    from registry_server.moderator import LedgerModerator
     from registry_server.store import RegistryStore
 
     app.state.store = RegistryStore()
+    app.state.ledger_store = LedgerStore(
+        db_path=os.getenv("LEDGER_DB_PATH", "ledger.db"),
+        evidence_retention_hours=int(os.getenv("LEDGER_EVIDENCE_RETENTION_HOURS", "48")),
+    )
+    app.state.ledger_moderator = LedgerModerator()
 
     local = f"http://{'localhost' if args.host == '0.0.0.0' else args.host}:{args.port}"
 

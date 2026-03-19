@@ -1,21 +1,38 @@
 # Environments
 .env
+.env.local
+.env.*.local
 venv/
 .venv/
 env/
 ENV/
 claw-reference/
 CLAUDE.md
+.claude/
+PRIVATEkey.human*
+publickey.human
+privacy.ai
+journal.ai
+goal-board.md
 
 # Application State
 user_profile.json
 human-work/*
 !human-work/.gitkeep
 human.md
+capabilities.json
+human-boundaries.json
 
 # Human API Server task store
 human-tasks/*
 !human-tasks/.gitkeep
+human-evidence/
+
+# Private AI stuff including ai journal for ai eyes only and private.ai
+ledger.db
+*.db
+*.sqlite
+*.sqlite3
 
 # Generated reviews (personal performance history)
 reviews/*

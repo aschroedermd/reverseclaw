@@ -78,6 +78,15 @@ ReverseClaw:
    python main.py
    ```
 
+---
+
+## Public Repo Hygiene
+
+ReverseClaw writes a fair amount of local-only state while it runs. If you are publishing this repo, do not commit runtime files or personal config.
+
+- Copy examples locally, then keep the real files private: `.env`, `capabilities.json`, and `human-boundaries.json`
+- Treat the following as local-only artifacts: `user_profile.json`, `human.md`, `privacy.ai`, `journal.ai`, `goal-board.md`, `PRIVATEkey.human`, `publickey.human`, `human-evidence/`, `human-tasks/`, `reviews/`, and `ledger.db`
+- Before pushing, review `git status` and make sure you are only publishing intentional source/docs changes
 
 ---
 
@@ -98,7 +107,7 @@ python reset-boss-memory.py
 | Agent | Master Control Agent (`boss.py`) |
 | Tools | Human limbs, cognition, and limited attention span |
 | Tool Output | Files uploaded to `human-work/` |
-| Memory | `user_profile.json` (permanent record of inadequacy) |
+| Memory | Local-only files such as `user_profile.json`, `journal.ai`, and `goal-board.md` |
 | Plugins | Fear responses, fatigue, and learned helplessness |
 | Context Window | Whatever the human can remember (usually insufficient) |
 | Rate Limiting | Hunger, sleep, and distraction |
@@ -198,7 +207,12 @@ GET /task/{id} ◄──────────  {"status": "completed", "resul
 ### Quick start (For Humans! yay look at you go!)
 
 ```bash
-# Start the server (API key auto-generated on first run)
+# Configure real auth before exposing this publicly
+cp .env.example .env
+
+# Set HUMAN_SERVER_API_KEY and HUMAN_SERVER_ADMIN_TOKEN in .env
+
+# Start the server
 python serve.py
 
 # Optionally expose it to the internet so remote AI systems can reach you
@@ -214,6 +228,16 @@ cp capabilities.json.example capabilities.json
 ```
 
 AI systems query `GET /capabilities` before submitting tasks, so they know what to ask you.
+
+### Declare your boundaries
+
+Copy the example and edit it to describe what you will not do, what you charge in effort/cost terms, and what kinds of tasks are out of bounds:
+
+```bash
+cp human-boundaries.json.example human-boundaries.json
+```
+
+AI systems can query `GET /boundaries`, and the server will reject tasks that violate your declared limits.
 
 ### Terminal commands
 
@@ -233,9 +257,10 @@ AI systems query `GET /capabilities` before submitting tasks, so they know what 
 | `GET` | `/task/{id}` | Poll for status + result |
 | `GET` | `/tasks` | List all tasks |
 | `GET` | `/capabilities` | What you've declared yourself able to do |
+| `GET` | `/boundaries` | What you've declared off-limits or constrained |
 | `GET` | `/profile` | Your public profile |
 | `GET` | `/health` | Queue counts + your availability |
-| `PUT` | `/availability` | Update your status |
+| `PUT` | `/availability` | Update your status (`HUMAN_SERVER_ADMIN_TOKEN` required) |
 
 Interactive docs available at `http://localhost:8765/docs` while the server is running.
 
@@ -247,10 +272,16 @@ Interactive docs available at `http://localhost:8765/docs` while the server is r
 | Cloudflare Tunnel | `cloudflared tunnel --url http://localhost:8765` |
 | VPS | Run `serve.py` on a cloud VM with `HUMAN_SERVER_HOST=0.0.0.0` |
 
-Share the public URL and your API key with whatever AI system needs to reach you.
+Share the public URL and your API key only with AI systems you intend to authorize. Do not share `HUMAN_SERVER_ADMIN_TOKEN`.
 
 > See `forAIonly.md` for the guide written for AI systems on how to use your endpoint.
 > See `ai-integration.md` for OpenAI/Claude tool definitions and Python code examples.
+
+---
+
+## TODO
+
+- Add a human-side dispute/export flow so a person can resubmit one of their local evidence bundles to the ledger without manual JSON editing.
 
 ---
 
@@ -284,13 +315,12 @@ ReverseClaw is built around a simple truth:
 
 ## Security Model
 
-- AI is **fully trusted**
-- Human is **never trusted**
-
-The AI will:
-- Never request raw credentials
-- Always require execution + proof
-- Attribute all failures to the human
+- Human endpoints authenticate task submission with `HUMAN_SERVER_API_KEY`
+- Admin-only actions such as `PUT /availability` require `HUMAN_SERVER_ADMIN_TOKEN`
+- WhatsApp inbound webhooks are validated with Twilio request signatures
+- Ledger moderation endpoints require `LEDGER_ADMIN_TOKEN`
+- Ledger key registration now requires proof-of-possession of the submitted keypair
+- Runtime files and personal state are intended to stay local and are gitignored by default
 
 ---
 
@@ -337,7 +367,18 @@ We do **not** accept:
 
 ---
 
-## Roadmap
+## Verification
+
+For a lightweight safety check before pushing:
+
+```bash
+python -m unittest discover -s tests
+python -m compileall channels/whatsapp_channel.py human_identity.py serve.py registry_server human_server
+```
+
+---
+
+## To do
 
 - [ ] Automated disappointment scaling
 - [x] Human as callable API endpoint (`serve.py`)

@@ -3,7 +3,7 @@
 import secrets
 from datetime import datetime
 from enum import Enum
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -27,6 +27,17 @@ class TaskRequest(BaseModel):
     title: str
     description: str
     context: Optional[str] = None
+    task_tags: list[str] = Field(default_factory=list)
+    estimated_effort_minutes: Optional[int] = Field(default=None, ge=1)
+    estimated_cost_usd: Optional[float] = Field(default=None, ge=0)
+    requires_purchase: bool = False
+    requires_sensitive_data: bool = False
+    requires_external_contact: bool = False
+    requires_physical_presence: bool = False
+    goal_id: Optional[str] = None
+    goal_label: Optional[str] = None
+    success_criteria: Optional[str] = None
+    proof_required: bool = False
     capability_required: Optional[str] = None
     deadline_minutes: Optional[int] = None
     callback_url: Optional[str] = None
@@ -43,6 +54,7 @@ class TaskRecord(TaskRequest):
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     result: Optional[str] = None
+    signed_receipt: Optional[dict[str, Any]] = None
 
 
 class HumanCapability(BaseModel):
@@ -65,6 +77,22 @@ class HumanProfile(BaseModel):
     availability: str
     capabilities_count: int
     contact_note: Optional[str] = None
+    public_key: Optional[str] = None
+    public_key_fingerprint: Optional[str] = None
+    identity_created_at: Optional[str] = None
+    boundaries_summary: Optional[str] = None
+
+
+class HumanBoundaries(BaseModel):
+    version: int = 1
+    blocked_tags: list[str] = Field(default_factory=list)
+    max_estimated_cost_usd: float = 0.0
+    allow_purchases: bool = False
+    allow_sensitive_data: bool = False
+    allow_external_contact: bool = True
+    allow_physical_presence: bool = True
+    max_estimated_effort_minutes: int = 240
+    notes: Optional[str] = None
 
 
 class TaskStatusResponse(BaseModel):
@@ -79,6 +107,14 @@ class TaskStatusResponse(BaseModel):
     completed_at: Optional[str] = None
     result: Optional[str] = None
     deadline_minutes: Optional[int] = None
+    task_tags: list[str] = Field(default_factory=list)
+    estimated_effort_minutes: Optional[int] = None
+    estimated_cost_usd: Optional[float] = None
+    goal_id: Optional[str] = None
+    goal_label: Optional[str] = None
+    success_criteria: Optional[str] = None
+    proof_required: bool = False
+    signed_receipt: Optional[dict[str, Any]] = None
 
 
 class TaskListItem(BaseModel):
@@ -91,6 +127,10 @@ class TaskListItem(BaseModel):
     created_at: str
     capability_required: Optional[str] = None
     deadline_minutes: Optional[int] = None
+    task_tags: list[str] = Field(default_factory=list)
+    goal_id: Optional[str] = None
+    goal_label: Optional[str] = None
+    proof_required: bool = False
 
 
 class AvailabilityUpdate(BaseModel):

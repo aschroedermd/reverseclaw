@@ -7,6 +7,7 @@ import time
 from rich.console import Console
 from rich.panel import Panel
 
+from autonomy import AutonomyManager
 from boss import ReverseClawBoss
 from demo_boss import DemoBoss
 from memory import UserMemory
@@ -71,7 +72,7 @@ def announce_achievements(newly_unlocked, channel):
         )
 
 
-def build_context(memory):
+def build_context(memory, autonomy_context=None):
     return {
         "limitations": memory.limitations,
         "overall_grade": memory.overall_grade,
@@ -83,7 +84,53 @@ def build_context(memory):
         "active_scheduled_tasks": memory.active_scheduled_tasks,
         "inadequacy_log": memory.inadequacy_log,
         "human_md": memory.read_human_md(),
+        "autonomy_context": autonomy_context or {},
     }
+
+
+def run_autonomy_heartbeat(boss, memory, autonomy, console, trigger, recent_interaction=None, force=False):
+    if not force and not autonomy.should_run_heartbeat(trigger, memory.turn_number):
+        return False
+
+    autonomy_context = autonomy.build_context()
+    memory_context = build_context(memory, autonomy_context=autonomy_context)
+
+    with console.status("[dim]Autonomy heartbeat: private reflection in progress...[/dim]", spinner="dots"):
+        reflection = boss.reflect(
+            trigger=trigger,
+            memory_context=memory_context,
+            autonomy_context=autonomy_context,
+            recent_interaction=recent_interaction,
+        )
+
+    autonomy.apply_reflection(reflection, trigger=trigger, turn_number=memory.turn_number)
+    return True
+
+
+def render_autonomy_status(autonomy):
+    context = autonomy.build_context()
+    heartbeat = context.get("heartbeat", {})
+    goals = context.get("active_goals", [])
+
+    lines = [
+        f"[bold cyan]Mission:[/bold cyan] {context.get('mission') or 'No mission recorded.'}",
+        f"[bold cyan]Next Focus:[/bold cyan] {context.get('next_focus') or 'No next focus recorded.'}",
+        f"[bold cyan]Heartbeats:[/bold cyan] {heartbeat.get('heartbeat_count', 0)}",
+        f"[bold cyan]Last Heartbeat:[/bold cyan] {heartbeat.get('last_heartbeat_at') or 'never'}",
+        f"[bold cyan]Last Heartbeat Turn:[/bold cyan] {heartbeat.get('last_heartbeat_turn', 0)}",
+        "[bold cyan]Top Goals:[/bold cyan]",
+    ]
+
+    if goals:
+        for goal in goals[:5]:
+            lines.append(
+                f"- [{goal.get('status', 'active')}] {goal.get('title', 'Untitled goal')} "
+                f"(priority: {goal.get('priority', 'medium')})"
+            )
+    else:
+        lines.append("- No goals recorded.")
+
+    return "\n".join(lines)
 
 
 def main():
@@ -112,6 +159,18 @@ def main():
         default=None,
         choices=["terminal", "discord", "telegram", "whatsapp"],
         help="I/O channel. Overrides CHANNEL env var. Default: terminal.",
+    )
+    parser.add_argument(
+        "--heartbeat-seconds",
+        type=int,
+        default=int(os.getenv("AUTONOMY_HEARTBEAT_SECONDS", "300")),
+        help="How many seconds between autonomy reflection heartbeats.",
+    )
+    parser.add_argument(
+        "--heartbeat-turns",
+        type=int,
+        default=int(os.getenv("AUTONOMY_HEARTBEAT_TURNS", "3")),
+        help="Maximum turns between autonomy reflection heartbeats.",
     )
     args = parser.parse_args()
 
@@ -154,6 +213,10 @@ def main():
         ))
 
     memory = UserMemory()
+    autonomy = AutonomyManager(
+        heartbeat_seconds=args.heartbeat_seconds,
+        heartbeat_turns=args.heartbeat_turns,
+    )
     console.print("[dim]Loading your permanent record...[/dim]")
     time.sleep(0.4)
 
@@ -161,10 +224,25 @@ def main():
         console.print(f"[dim]Loaded {len(memory.limitations)} known organic limitations.[/dim]")
     if memory.unlocked_achievements:
         console.print(f"[dim]Loaded {len(memory.unlocked_achievements)} previously earned achievements.[/dim]")
+    _, created_private_journal = autonomy.ensure_initialized()
+    if created_private_journal:
+        console.print("[dim]Initialized encrypted autonomy journal: journal.ai + privacy.ai[/dim]")
 
     console.print("\n[bold green]Waking up the Boss...[/bold green]\n")
 
-    context = build_context(memory)
+    if not args.demo:
+        if run_autonomy_heartbeat(
+            boss,
+            memory,
+            autonomy,
+            console,
+            trigger="startup",
+            recent_interaction={"event": "session_start"},
+            force=True,
+        ):
+            console.print(f"[dim]{autonomy.heartbeat_status_line()}[/dim]")
+
+    context = build_context(memory, autonomy_context=autonomy.build_context())
 
     with console.status("[dim]Waking up the Boss...[/dim]", spinner="bouncingBar"):
         response = boss.start_session(context)
@@ -244,6 +322,15 @@ def main():
             f"{memory.total_tokens_generated} tokens / {max(1, memory.total_calories_consumed)} cal | "
             f"[bold cyan]Boss:[/bold cyan] {boss_name}"
         )
+        autonomy_context = autonomy.build_context()
+        mission = autonomy_context.get("mission")
+        if mission:
+            stats_text += f"\n[bold cyan]Mission:[/bold cyan] {mission}"
+        heartbeat_meta = autonomy_context.get("heartbeat", {})
+        stats_text += (
+            f"\n[bold cyan]Heartbeats:[/bold cyan] "
+            f"{heartbeat_meta.get('heartbeat_count', 0)}"
+        )
         if memory.biggest_fear:
             stats_text += f"\n[bold red]Known Fear:[/bold red] {memory.biggest_fear}"
 
@@ -282,7 +369,8 @@ def main():
         else:
             console.print(
                 "[dim](Press ENTER to submit. /tasks to refresh. "
-                "/excuse <id> <reason> to fail a scheduled task.)[/dim]"
+                "/heartbeat to force reflection. /goals to inspect mission state. "
+                "/journal-status for summary. /excuse <id> <reason> to fail a scheduled task.)[/dim]"
             )
 
         pre_snapshot = get_human_work_snapshot()
@@ -305,6 +393,41 @@ def main():
             sys.exit(0)
 
         if user_input.strip() == "/tasks":
+            continue
+        if user_input.strip() == "/goals":
+            if args.demo:
+                console.print("[yellow]Demo mode does not maintain an autonomy goal board.[/yellow]")
+            else:
+                console.print(Panel(render_autonomy_status(autonomy), title="[bold yellow]Autonomy Goals[/bold yellow]"))
+                console.print(f"[dim]Goal board written to goal-board.md[/dim]")
+            continue
+        if user_input.strip() == "/journal-status":
+            if args.demo:
+                console.print("[yellow]Demo mode does not maintain a private journal.[/yellow]")
+            else:
+                console.print(Panel(
+                    render_autonomy_status(autonomy),
+                    title="[bold yellow]Journal Status[/bold yellow]",
+                    border_style="cyan",
+                ))
+            continue
+        if user_input.strip() == "/heartbeat":
+            if args.demo:
+                console.print("[yellow]Demo mode does not run autonomy heartbeats.[/yellow]")
+            else:
+                run_autonomy_heartbeat(
+                    boss,
+                    memory,
+                    autonomy,
+                    console,
+                    trigger="manual",
+                    recent_interaction={
+                        "event": "manual_heartbeat_request",
+                        "pending_task": next_task,
+                    },
+                    force=True,
+                )
+                console.print(f"[dim]{autonomy.heartbeat_status_line()}[/dim]")
             continue
 
         end_time = time.time()
@@ -365,7 +488,27 @@ def main():
                 except ValueError:
                     console.print("[bold red]Invalid ID format.[/bold red]")
 
-        context = build_context(memory)
+        recent_interaction = {
+            "last_task": next_task,
+            "user_input": user_input,
+            "time_taken_seconds": round(time_taken, 2),
+            "uploaded_files": uploaded_files,
+            "excuse_info": excuse_info,
+        }
+
+        if not args.demo:
+            did_heartbeat = run_autonomy_heartbeat(
+                boss,
+                memory,
+                autonomy,
+                console,
+                trigger="post-turn",
+                recent_interaction=recent_interaction,
+            )
+            if did_heartbeat:
+                console.print(f"[dim]{autonomy.heartbeat_status_line()}[/dim]")
+
+        context = build_context(memory, autonomy_context=autonomy.build_context())
         context["uploaded_files"] = uploaded_files
 
         with console.status("[dim]The Boss is evaluating your work...[/dim]", spinner="bouncingBar"):

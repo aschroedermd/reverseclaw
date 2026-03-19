@@ -3,6 +3,7 @@
 import ipaddress
 import json
 import os
+import secrets
 import socket
 import threading
 from datetime import datetime
@@ -16,6 +17,7 @@ from .models import (
     AvailabilityStatus,
     AvailabilityUpdate,
     HealthResponse,
+    HumanBoundaries,
     HumanCapability,
     HumanProfile,
     TaskListItem,
@@ -24,6 +26,7 @@ from .models import (
     TaskStatus,
     TaskStatusResponse,
 )
+from human_policy import BOUNDARIES_FILE_DEFAULT, load_boundaries, summarize_boundaries, validate_task_against_boundaries
 
 app = FastAPI(
     title="Human API",
@@ -93,6 +96,11 @@ def _load_capabilities() -> list[HumanCapability]:
     return [HumanCapability.model_validate(c) for c in data]
 
 
+def _load_boundaries() -> dict:
+    boundaries_file = getattr(app.state, "boundaries_file", BOUNDARIES_FILE_DEFAULT)
+    return load_boundaries(boundaries_file)
+
+
 def require_api_key(request: Request):
     api_key = getattr(app.state, "api_key", None)
     if not api_key:
@@ -105,7 +113,7 @@ def require_api_key(request: Request):
     if not provided:
         provided = request.headers.get("X-Api-Key")
 
-    if not provided or provided != api_key:
+    if not provided or not secrets.compare_digest(provided, api_key):
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
@@ -121,7 +129,7 @@ def require_admin_token(request: Request):
     if not provided:
         provided = request.headers.get("X-Api-Key")
 
-    if not provided or provided != admin_token:
+    if not provided or not secrets.compare_digest(provided, admin_token):
         raise HTTPException(status_code=401, detail="Admin token required")
 
 
@@ -132,6 +140,7 @@ def _fire_webhook(url: str, task: TaskRecord):
             "status": task.status,
             "result": task.result,
             "completed_at": task.completed_at,
+            "signed_receipt": task.signed_receipt,
         }
         for attempt in range(2):
             try:
@@ -151,9 +160,20 @@ def create_task(task_req: TaskRequest):
     availability = getattr(app.state, "availability", AvailabilityStatus.available)
     max_queue = getattr(app.state, "max_queue", MAX_QUEUE_DEFAULT)
     max_per_caller = getattr(app.state, "max_queue_per_caller", MAX_QUEUE_PER_CALLER_DEFAULT)
+    boundaries = _load_boundaries()
 
     if availability == AvailabilityStatus.offline or availability == "offline":
         raise HTTPException(status_code=503, detail="Human is currently offline")
+
+    violations = validate_task_against_boundaries(task_req, boundaries)
+    if violations:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Task violates declared human boundaries",
+                "violations": violations,
+            },
+        )
 
     # Validate callback_url before accepting the task (SSRF prevention)
     if task_req.callback_url:
@@ -218,6 +238,14 @@ def get_task(task_id: str) -> TaskStatusResponse:
         completed_at=task.completed_at,
         result=task.result,
         deadline_minutes=task.deadline_minutes,
+        task_tags=task.task_tags,
+        estimated_effort_minutes=task.estimated_effort_minutes,
+        estimated_cost_usd=task.estimated_cost_usd,
+        goal_id=task.goal_id,
+        goal_label=task.goal_label,
+        success_criteria=task.success_criteria,
+        proof_required=task.proof_required,
+        signed_receipt=task.signed_receipt,
     )
 
 
@@ -234,6 +262,10 @@ def list_tasks(status: Optional[str] = None) -> list[TaskListItem]:
             created_at=t.created_at,
             capability_required=t.capability_required,
             deadline_minutes=t.deadline_minutes,
+            task_tags=t.task_tags,
+            goal_id=t.goal_id,
+            goal_label=t.goal_label,
+            proof_required=t.proof_required,
         )
         for t in tasks
     ]
@@ -247,7 +279,9 @@ def get_capabilities() -> list[HumanCapability]:
 @app.get("/profile")
 def get_profile() -> HumanProfile:
     caps = _load_capabilities()
+    boundaries = _load_boundaries()
     availability = getattr(app.state, "availability", AvailabilityStatus.available)
+    identity_meta = getattr(app.state, "identity_meta", {}) or {}
     if hasattr(availability, "value"):
         availability = availability.value
     return HumanProfile(
@@ -257,7 +291,16 @@ def get_profile() -> HumanProfile:
         availability=str(availability),
         capabilities_count=len(caps),
         contact_note=os.getenv("HUMAN_CONTACT_NOTE"),
+        public_key=identity_meta.get("public_key"),
+        public_key_fingerprint=identity_meta.get("fingerprint"),
+        identity_created_at=identity_meta.get("created_at"),
+        boundaries_summary=summarize_boundaries(boundaries),
     )
+
+
+@app.get("/boundaries")
+def get_boundaries() -> HumanBoundaries:
+    return HumanBoundaries.model_validate(_load_boundaries())
 
 
 @app.get("/health")

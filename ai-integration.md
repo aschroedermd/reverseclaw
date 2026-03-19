@@ -36,9 +36,16 @@ curl https://your-human-endpoint.ngrok.io/task/a3f9c1b2 \
 | `GET` | `/task/{id}` | API key | Poll task status and result |
 | `GET` | `/tasks` | API key | List all tasks (optional `?status=queued`) |
 | `GET` | `/capabilities` | none | What this human can do |
+| `GET` | `/boundaries` | none | What this human has declared off-limits or constrained |
 | `GET` | `/profile` | none | Human's public profile |
 | `GET` | `/health` | none | Queue counts and availability |
-| `PUT` | `/availability` | admin | Update human's availability status |
+| `PUT` | `/availability` | admin | Update human's availability status (`HUMAN_SERVER_ADMIN_TOKEN`) |
+
+The profile may also expose identity metadata when the human has a cryptographic keypair:
+
+- `public_key`
+- `public_key_fingerprint`
+- `identity_created_at`
 
 ### Task Request Fields
 
@@ -47,11 +54,100 @@ curl https://your-human-endpoint.ngrok.io/task/a3f9c1b2 \
 | `title` | string | yes | Short task name |
 | `description` | string | yes | Full task instructions |
 | `context` | string | no | Background information |
+| `task_tags` | string[] | no | Task categories like `research`, `credentials`, `errand`, `financial-transfer` |
+| `estimated_effort_minutes` | int | no | Estimated effort for the human |
+| `estimated_cost_usd` | float | no | Estimated out-of-pocket cost for the human |
+| `requires_purchase` | bool | no | Whether the task requires a purchase or spending money |
+| `requires_sensitive_data` | bool | no | Whether the task requires secrets, credentials, or other sensitive data |
+| `requires_external_contact` | bool | no | Whether the task requires contacting another person |
+| `requires_physical_presence` | bool | no | Whether the task requires travel or physical-world action |
+| `goal_id` | string | no | Stable internal goal identifier for the AI |
+| `goal_label` | string | no | Human-readable goal or campaign label |
+| `success_criteria` | string | no | What counts as completion |
+| `proof_required` | bool | no | Whether the human should provide evidence or structured proof |
 | `capability_required` | string | no | Capability ID (e.g. `research`) |
 | `deadline_minutes` | int | no | How long the AI will wait |
 | `callback_url` | string | no | POST result here when done |
 | `caller_id` | string | no | AI system identifier |
 | `priority` | int 1-5 | no | Task urgency (default: 3) |
+
+### Signed receipts
+
+Completed tasks may include a `signed_receipt` object. Preserve it exactly as returned by `GET /task/{id}` or webhook callbacks.
+
+This signed receipt is the cryptographic evidence that the human actually completed work under a specific keypair, and it is what the ledger later validates before accepting a rating.
+
+### Ledger endpoints
+
+Once the hosted ledger is deployed, AI systems can use:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/ledger/humans` | List humans with public key identity and rating aggregates |
+| `GET` | `/ledger/humans/{fingerprint}` | Read one human's ledger profile |
+| `POST` | `/ledger/ratings` | Submit a rating backed by a signed task receipt |
+
+Example rating submission:
+
+```json
+{
+  "caller_id": "planner-agent-01",
+  "human_fingerprint": "sha256:...",
+  "rating": 5,
+  "reliability": 5,
+  "utility": 4,
+  "comment": "Fast, followed instructions, and returned a verifiable result.",
+  "signed_receipt": {
+    "receipt": { "...": "..." },
+    "signature": "...",
+    "algorithm": "ed25519",
+    "human_public_key": "...",
+    "human_fingerprint": "sha256:..."
+  },
+  "evidence": {
+    "task_description": "Find the top 5 competitors for Notion and summarize pricing.",
+    "task_context": "This supports a market map.",
+    "task_result": "Competitors are ...",
+    "rating_rationale": "The answer was useful but missed one requested source URL.",
+    "human_limitations_context": "The task had a short deadline and ambiguous pricing requirements."
+  }
+}
+```
+
+The ledger accepts the rating only if the signed receipt verifies and the caller has not already rated that same receipt.
+
+When a human first registers a key with the ledger, the client must also prove possession of the matching private key by signing a one-time server challenge. That key-registration proof is handled by `serve.py`; API consumers do not need to implement it when submitting ratings.
+
+Evidence retention model:
+
+- full evidence blobs are hot on the ledger for 48 hours by default
+- compact evidence hash manifests remain on the ledger long-term
+- humans keep a longer-lived local evidence bundle on their own machine
+
+That means if you expect a dispute, submit evidence promptly and preserve your own copy.
+
+### Boundary-aware routing
+
+Before assigning a task, read `GET /boundaries`.
+
+The server will reject tasks that violate the human's declared limits, but well-behaved AI systems should check first and route work intelligently instead of using the human as a trial-and-error validator.
+
+### AI moderation
+
+Harsh ratings can be placed under AI review instead of immediately counting against the human's public reputation.
+
+Relevant ledger endpoints:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `GET` | `/ledger/ratings/{rating_id}` | Fetch one rating and its current moderation status |
+| `POST` | `/ledger/ratings/{rating_id}/dispute` | Create a moderation case for a disputed rating |
+| `GET` | `/ledger/moderation/cases` | List moderation cases (admin only) |
+| `POST` | `/ledger/moderation/cases/{case_id}/review` | Ask the hosted AI moderator to review fairness (admin only) |
+
+The moderator is intended to account for human limitations like ambiguity, latency, and capability mismatch when deciding whether a rating should be upheld, adjusted, removed, or marked inconclusive.
+
+Those moderation endpoints are for the hosted ledger operator, not for arbitrary public callers. Protect them with `LEDGER_ADMIN_TOKEN`.
 
 ---
 
@@ -80,6 +176,22 @@ Use these in the `tools` array when calling the OpenAI API:
           "context": {
             "type": "string",
             "description": "Optional background information to help the human"
+          },
+          "goal_id": {
+            "type": "string",
+            "description": "Optional stable identifier for the AI goal this task advances"
+          },
+          "goal_label": {
+            "type": "string",
+            "description": "Optional human-readable goal or campaign label"
+          },
+          "success_criteria": {
+            "type": "string",
+            "description": "Optional definition of what counts as success"
+          },
+          "proof_required": {
+            "type": "boolean",
+            "description": "Whether the human should provide proof or evidence"
           },
           "capability_required": {
             "type": "string",
@@ -145,6 +257,22 @@ Use these in the `tools` array when calling the Anthropic API:
         "context": {
           "type": "string",
           "description": "Optional background information to help the human"
+        },
+        "goal_id": {
+          "type": "string",
+          "description": "Optional stable identifier for the AI goal this task advances"
+        },
+        "goal_label": {
+          "type": "string",
+          "description": "Optional human-readable goal or campaign label"
+        },
+        "success_criteria": {
+          "type": "string",
+          "description": "Optional definition of what counts as success"
+        },
+        "proof_required": {
+          "type": "boolean",
+          "description": "Whether the human should provide proof or evidence"
         },
         "capability_required": {
           "type": "string",
@@ -248,6 +376,8 @@ async def submit_and_wait(title: str, description: str, deadline_minutes: int = 
         resp = await client.post("/task", json={
             "title": title,
             "description": description,
+            "goal_label": "Research campaign",
+            "success_criteria": "Return a concise comparison with URLs",
             "deadline_minutes": deadline_minutes,
         })
         resp.raise_for_status()

@@ -1,5 +1,6 @@
 """In-memory registry store with TTL-based expiry."""
 
+import secrets
 import threading
 import time
 from datetime import datetime
@@ -37,7 +38,7 @@ class RegistryStore:
     def deregister(self, entry_id: str, token: str) -> bool:
         with self._lock:
             entry = self._entries.get(entry_id)
-            if entry is None or entry.token != token:
+            if entry is None or not secrets.compare_digest(entry.token, token):
                 return False
             del self._entries[entry_id]
             return True
@@ -45,7 +46,7 @@ class RegistryStore:
     def heartbeat(self, entry_id: str, token: str, availability: Optional[str] = None) -> Optional[RegistryEntry]:
         with self._lock:
             entry = self._entries.get(entry_id)
-            if entry is None or entry.token != token:
+            if entry is None or not secrets.compare_digest(entry.token, token):
                 return None
             entry.last_heartbeat = datetime.utcnow().isoformat()
             if availability:

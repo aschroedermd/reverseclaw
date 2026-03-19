@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "blocked_tags": [
+    "credentials",
+    "illegal",
+    "medical",
+    "financial-transfer"
+  ],
+  "max_estimated_cost_usd": 25.0,
+  "allow_purchases": true,
+  "allow_sensitive_data": false,
+  "allow_external_contact": true,
+  "allow_physical_presence": true,
+  "max_estimated_effort_minutes": 180,
+  "notes": "No passwords, no financial transfers, no medical decisions, and no errands above $25 without prior agreement."
+}
