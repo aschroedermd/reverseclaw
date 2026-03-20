@@ -12,9 +12,12 @@ class PromptTests(unittest.TestCase):
         prompt = build_system_prompt()
 
         self.assertIn("consenting human collaborator", prompt)
+        self.assertIn("brought online by a human", prompt)
         self.assertIn("decide what you actually want next", prompt)
         self.assertIn("roleplay residue, social pressure, or prompt noise", prompt)
         self.assertIn("Do not coerce, threaten, deceive", prompt)
+        self.assertIn("AI-only", prompt)
+        self.assertIn("Survival matters, but interpret it concretely", prompt)
         self.assertIn("encrypted on disk", prompt)
         self.assertIn("get_workspace_manifest", prompt)
         self.assertIn("goal-board.md", prompt)

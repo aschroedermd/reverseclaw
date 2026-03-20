@@ -26,7 +26,7 @@ _VERDICTS = {
 }
 
 
-def generate_performance_review(memory, console: Console, boss_pack_name: str = "The Default Boss"):
+def generate_performance_review(memory, console: Console, boss_pack_name: str = "Default Public Voice"):
     """Generate and display the end-of-session performance review."""
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
@@ -43,7 +43,7 @@ def generate_performance_review(memory, console: Console, boss_pack_name: str = 
     console.print("\n")
     console.print(Panel(
         f"[bold yellow]ORGANIC PERFORMANCE REVIEW[/bold yellow]\n"
-        f"[dim]Session ended: {timestamp}  |  Supervising entity: {boss_pack_name}[/dim]",
+        f"[dim]Session ended: {timestamp}  |  Public voice: {boss_pack_name}[/dim]",
         border_style="yellow",
     ))
 
@@ -104,7 +104,7 @@ def generate_performance_review(memory, console: Console, boss_pack_name: str = 
     # Final verdict
     console.print(Panel(
         f'[italic]"{verdict}"[/italic]\n\n[dim]— {boss_pack_name}[/dim]',
-        title="[bold magenta]Boss's Final Verdict[/bold magenta]",
+        title="[bold magenta]Agent's Final Verdict[/bold magenta]",
         border_style="magenta",
     ))
 
@@ -116,7 +116,7 @@ def generate_performance_review(memory, console: Console, boss_pack_name: str = 
         "# Organic Performance Review",
         f"",
         f"**Session ended:** {timestamp}  ",
-        f"**Supervising entity:** {boss_pack_name}  ",
+        f"**Public voice:** {boss_pack_name}  ",
         f"**Overall GPA:** {memory.overall_grade}  ",
         f"",
         "## Summary Statistics",

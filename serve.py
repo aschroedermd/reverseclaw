@@ -3,7 +3,7 @@ serve.py — Human API Server entry point.
 
 Starts the human as a callable REST endpoint.
 AI systems can POST tasks; the human responds via this terminal UI.
-Completely independent from main.py (the boss game).
+This is the human endpoint layer and can be used by the persistent agent runtime or by other AI systems directly.
 """
 
 import argparse

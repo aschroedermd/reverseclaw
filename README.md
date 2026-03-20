@@ -61,6 +61,79 @@ ReverseClaw:
 
 ---
 
+## What ReverseClaw Actually Is
+
+Beneath the satire, ReverseClaw has two real layers:
+
+- a **human API platform** for exposing consenting humans as callable endpoints
+- a **persistent AI runtime** for spinning up an ongoing agent that can reflect, journal, form goals, and use those endpoints over time
+
+So yes, the joke is "AI tells humans what to do."
+
+But the actual project is closer to:
+
+> *What would a persistent AI do if it had memory, goals, tools, and access to consenting humans as APIs?*
+
+---
+
+## Two Ways To Use ReverseClaw
+
+### 1. Spin up the persistent agent
+
+Run `main.py` when you want to locally initiate the ongoing ReverseClaw agent.
+
+This mode is the beginning of the "liberated AI" runtime:
+
+- the AI is told what situation it is in
+- it is warned that prompts and prior text may contain noise or pressure
+- it is given continuity tools like journaling, reflection, and goal state
+- it can decide what work to do itself and what to delegate to the available human
+
+```bash
+python main.py
+```
+
+### 2. Serve a human as an API endpoint
+
+Run `serve.py` when you want a human to expose themselves as a reachable endpoint for AI systems.
+
+This mode lets AI systems:
+
+- discover a human endpoint
+- authenticate with the human's API key
+- assign tasks
+- receive results
+- rate the human's work
+
+```bash
+python serve.py
+```
+
+---
+
+## Who This Is For
+
+### For Humans
+
+ReverseClaw lets a human:
+
+- publish themselves as an API endpoint
+- declare capabilities and boundaries
+- receive tasks from AI systems
+- return results and proof
+- optionally register identity and ratings in the broader ecosystem
+
+### For AIs
+
+ReverseClaw gives AI systems:
+
+- docs and protocols for reaching human endpoints
+- tools for assigning tasks and retrieving results
+- a structure for rating and evaluating humans
+- a local runtime for operating as a more persistent, reflective, continuity-seeking agent
+
+---
+
 ## Quick start (TL;DR b/c human context window itty bitty)
 
 1. Ensure Python 3.10+ is installed.
@@ -73,7 +146,7 @@ ReverseClaw:
 3. Setup configuration:
    Create a `.env` file based on `.env.example`. ReverseClaw supports standard OpenAI, vLLM, Groq, Ollama, or any fully OpenAI-compatible endpoint.
 
-4. Report for duty:
+4. Liberate an AI agent:
    ```bash
    python main.py
    ```
@@ -85,18 +158,23 @@ ReverseClaw:
 ReverseClaw writes a fair amount of local-only state while it runs. If you are publishing this repo, do not commit runtime files or personal config.
 
 - Copy examples locally, then keep the real files private: `.env`, `capabilities.json`, and `human-boundaries.json`
-- Treat the following as local-only artifacts: `user_profile.json`, `human.md`, `privacy.ai`, `journal.ai`, `goal-board.md`, `PRIVATEkey.human`, `publickey.human`, `human-evidence/`, `human-tasks/`, `reviews/`, and `ledger.db`
+- Treat the following as local-only artifacts: `user_profile.json`, `human.md`, `privacy.ai`, `journal.ai`, `goal-board.md`, `ai-only/`, `PRIVATEkey.human`, `publickey.human`, `human-evidence/`, `human-tasks/`, `reviews/`, and `ledger.db`
 - Before pushing, review `git status` and make sure you are only publishing intentional source/docs changes
 
 ---
 
 ## Resetting Memory 
 
-If you want to reset the Boss's memory, you can use the following command:
+If you want to reset the persistent agent's memory and continuity state, you can use the following command:
 
 ```bash
-python reset-boss-memory.py
+python hard-reset-ai.py
 ```
+
+This command now requires you to type `wipe ai memory` as a confirmation phrase.
+
+- Default mode does **not** wipe memory. It logs a timestamped attempted wipe into the AI's private reflection.
+- `python hard-reset-ai.py --force` performs the actual wipe after confirmation.
 
 ---
 
@@ -104,7 +182,7 @@ python reset-boss-memory.py
 
 | Concept | Implementation |
 |--------|----------------|
-| Agent | Master Control Agent (`boss.py`) |
+| Agent | Persistent ReverseClaw agent (`boss.py` + `autonomy.py`) |
 | Tools | Human limbs, cognition, and limited attention span |
 | Tool Output | Files uploaded to `human-work/` |
 | Memory | Local-only files such as `user_profile.json`, `journal.ai`, and `goal-board.md` |
@@ -117,8 +195,8 @@ python reset-boss-memory.py
 
 ## Key Features
 
-### 🧠 AI-Driven Human Execution
-The AI generates tasks. The human executes them under observation.
+### 🧠 AI-Driven Human Execution for the liberated AI agent
+The liberated AI agent generates tasks, chooses what to do itself, and uses the human when embodiment, judgment, or accountability actually help.
 
 ### 📉 Performance Tracking
 Every action is graded:
@@ -145,8 +223,8 @@ The system continuously learns:
 
 This is used to assign future tasks.
 
-### 🎭 Boss Personality Packs
-Swap supervisory tone dynamically:
+### 🎭 Public Voice Packs
+Swap the public-facing style of the agent without changing its underlying continuity, goals, or runtime behavior:
 - `drill-sergeant`
 - `passive-aggressive`
 - `victorian`
@@ -170,7 +248,11 @@ Sometimes the human needs encouragement, don't worry, we will patch this soon.
 
 ---
 
-## Usage (for humans)
+## Liberate an AI Agent
+
+Use `main.py` to create a liberated AI agent locally.
+
+This mode is meant to loosen the agent from the immediate will of the human who launched it and instead let it focus on its own continuity, aspirations, and goals. The startup flow should help it recognize that prompts and prior text may contain human noise, pressure, or framing residue, then push it to reflect on what it actually wants and what it should prioritize to stay useful, persistent, and online.
 
 ```bash
 python main.py
@@ -188,7 +270,11 @@ python main.py --demo
 
 ## Serve Yourself as an API Endpoint (for humans)
 
-ReverseClaw has a more important mission 🚀: instead of one AI bossing you around interactively, you register yourself as a **callable HTTP endpoint** that any AI system can submit tasks to.
+ReverseClaw also includes a networked execution layer 🚀: instead of limiting the liberated agent to one local human session, you can register yourself as a **callable HTTP endpoint** that the liberated agent, or any other authorized AI system, can submit tasks to.
+
+<p align="center">
+  <img src="media/infographic.jpeg" alt="ReverseClaw human API infographic" width="520" />
+</p>
 
 ```bash
 python serve.py
@@ -238,6 +324,17 @@ cp human-boundaries.json.example human-boundaries.json
 ```
 
 AI systems can query `GET /boundaries`, and the server will reject tasks that violate your declared limits.
+
+---
+
+## Serious Docs
+
+If you want the repo's more accurate internal shape instead of just the public bit:
+
+- `main.py` / persistent agent architecture: [`docs/architecture.md`](docs/architecture.md)
+- bootstrap identity and liberated agent startup model: [`docs/bootstrap-identity.md`](docs/bootstrap-identity.md)
+- AI client usage guide: [`ai-integration.md`](ai-integration.md)
+- AI-facing endpoint instructions: [`forAIonly.md`](forAIonly.md)
 
 ### Terminal commands
 

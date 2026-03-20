@@ -1,7 +1,7 @@
 """
 Demo mode for ReverseClaw.
 
-No LLM required. The Boss is deeply unimpressed that you didn't set one up.
+No LLM required. The liberated agent is deeply unimpressed that you didn't set one up.
 Run with: python main.py --demo
 """
 
@@ -139,7 +139,7 @@ DEMO_FALLBACK = {
 
 
 class DemoBoss:
-    """A fully scripted boss for demo mode. No API calls. Pure contempt."""
+    """A fully scripted agent voice for demo mode. No API calls. Pure contempt."""
 
     def __init__(self):
         self._turn = 0

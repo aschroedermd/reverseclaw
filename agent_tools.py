@@ -39,6 +39,7 @@ PROTECTED_READ_FILES = {
 }
 PROTECTED_WRITE_FILES = PROTECTED_READ_FILES | {
     "goal-board.md",
+    "agent-state.json",
     "user_profile.json",
     "publickey.human",
 }
@@ -51,6 +52,7 @@ class AgentToolExecutor:
             privacy_path=str(self.workspace_root / "privacy.ai"),
             journal_path=str(self.workspace_root / "journal.ai"),
             goal_board_path=str(self.workspace_root / "goal-board.md"),
+            agent_state_path=str(self.workspace_root / "ai-only" / "agent-state.json"),
         )
 
     def tool_specs(self) -> list[dict[str, Any]]:
@@ -271,8 +273,13 @@ class AgentToolExecutor:
             "derived_or_internal_files": [
                 {
                     "path": "goal-board.md",
-                    "purpose": "Derived read-only view of the autonomy state for humans.",
+                    "purpose": "Derived read-only view of the persistent agent state for humans.",
                     "ai_access": "read via read_file; do not write directly",
+                },
+                {
+                    "path": "ai-only/agent-state.json",
+                    "purpose": "Machine-readable operational source of truth for the persistent agent.",
+                    "ai_access": "read via read_private_journal or read_file if needed; do not write directly",
                 },
                 {
                     "path": "journal.ai",
@@ -294,7 +301,7 @@ class AgentToolExecutor:
                 "Ask the human to work in human-work/ for normal deliverables and proof.",
                 "Ask the human to edit project source or docs only when you want a real project change, not for clerical duplication.",
                 "Do not ask the human to copy active goals from the journal into human.md; goal-board.md already renders them.",
-                "Do not ask the human to edit journal.ai, privacy.ai, or user_profile.json except for deliberate maintenance or recovery work.",
+                "Do not ask the human to edit journal.ai, ai-only/agent-state.json, privacy.ai, or user_profile.json except for deliberate maintenance or recovery work.",
             ],
             "ai_capabilities": [
                 "Use get_runtime_info for the current day and time.",
@@ -414,13 +421,19 @@ class AgentToolExecutor:
         state = self.autonomy.load_state()
         limit = max(1, min(12, int(arguments.get("recent_entry_limit", 5) or 5)))
         return {
+            "agent_profile": state.get("agent_profile", {}),
+            "mission_seed": state.get("mission_seed"),
             "mission": state.get("mission"),
             "next_focus": state.get("next_focus"),
             "journal_summary": state.get("journal_summary"),
             "human_strategy_note": state.get("human_strategy_note"),
             "active_goals": state.get("active_goals", []),
+            "campaigns": state.get("campaigns", []),
+            "selected_campaign_id": state.get("selected_campaign_id"),
+            "current_action": state.get("current_action", {}),
             "preferences": state.get("preferences", []),
             "operating_principles": state.get("operating_principles", []),
+            "routing_guidance": state.get("routing_guidance", []),
             "recent_entries": state.get("recent_entries", [])[-limit:],
             "heartbeat_count": state.get("heartbeat_count", 0),
             "updated_at": state.get("updated_at"),

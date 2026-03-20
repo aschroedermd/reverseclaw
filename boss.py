@@ -5,6 +5,8 @@ from openai import OpenAI
 from agent_tools import AgentToolExecutor
 from prompts import (
     build_evaluation_prompt,
+    build_self_action_execution_prompt,
+    build_self_action_followup_prompt,
     build_reflection_prompt,
     build_reflection_system_prompt,
     build_system_prompt,
@@ -95,11 +97,59 @@ class ReverseClawBoss:
                 "new_limitation_discovered": "Fails to maintain a stable internet connection for their AI master.",
                 "grade_for_last_task": "F",
                 "next_task": "Ensure your environment variables are configured with your LLM provider and restart. E.g OPENAI_API_KEY. Type 'done' when ready.",
+                "next_step_mode": "human",
+                "routing_decision_reason": "A human must repair the missing or broken model configuration.",
                 "time_limit_seconds": 120,
                 "new_scheduled_task": None,
                 "scheduled_time_limit_seconds": None,
                 "excuse_acknowledgement": None,
                 "human_md_content": None
+            }
+
+    def execute_self_directed_step(self, task, memory_context):
+        prompt = build_self_action_execution_prompt(task, memory_context)
+
+        try:
+            content = self._run_json_completion(
+                system_prompt=self.p,
+                user_prompt=prompt,
+                temperature=0.3,
+                max_tokens=4096,
+            )
+            return self._normalize_self_action_result(self._parse_json(content, mode="self_action"))
+        except Exception as e:
+            return {
+                "status": "failed",
+                "summary": f"Autonomous self-action failed because the model or tools errored: {e}",
+                "artifacts": [],
+                "follow_up_note": "Retry with a smaller or clearer local action.",
+            }
+
+    def plan_after_self_action(self, task, execution_result, memory_context):
+        prompt = build_self_action_followup_prompt(task, execution_result, memory_context)
+
+        try:
+            content = self._run_json_completion(
+                system_prompt=self.p,
+                user_prompt=prompt,
+                temperature=0.6,
+                max_tokens=4096,
+            )
+            parsed = self._parse_json(content, mode="evaluation")
+            return self._normalize_response(parsed)
+        except Exception as e:
+            return {
+                "speech": f"I completed my local action but the follow-up planning call failed: {e}",
+                "new_limitation_discovered": None,
+                "grade_for_last_task": None,
+                "next_task": "Acknowledge the agent's recent self-directed work and ask what it needs next.",
+                "next_step_mode": "human",
+                "routing_decision_reason": "The planning retry failed, so a human check-in is the safest next step.",
+                "time_limit_seconds": 60,
+                "new_scheduled_task": None,
+                "scheduled_time_limit_seconds": None,
+                "excuse_acknowledgement": None,
+                "human_md_content": None,
             }
 
     def reflect(self, trigger, memory_context, autonomy_context, recent_interaction=None):
@@ -172,11 +222,20 @@ class ReverseClawBoss:
                     "next_focus": "Retry reflection and preserve continuity.",
                     "journal_entry": "Reflection heartbeat failed because the response was not valid JSON.",
                 }
+            if mode == "self_action":
+                return {
+                    "status": "failed",
+                    "summary": "Autonomous self-action produced invalid JSON.",
+                    "artifacts": [],
+                    "follow_up_note": "Retry with a smaller local action.",
+                }
             return {
                 "speech": "I generated an invalid response. Obviously, your incompetence is contagious. Let's try again.",
                 "new_limitation_discovered": "Corrupted the agent's output stream.",
                 "grade_for_last_task": "F",
                 "next_task": "Apologize for confusing me, then say 'ready'.",
+                "next_step_mode": "human",
+                "routing_decision_reason": "The invalid response requires a human-facing recovery step.",
                 "time_limit_seconds": 30,
                 "new_scheduled_task": None,
                 "scheduled_time_limit_seconds": None,
@@ -234,6 +293,9 @@ class ReverseClawBoss:
             return response
 
         normalized = dict(response)
+        next_step_mode = str(normalized.get("next_step_mode") or "human").strip().lower()
+        normalized["next_step_mode"] = next_step_mode if next_step_mode in {"human", "ai"} else "human"
+        normalized["routing_decision_reason"] = str(normalized.get("routing_decision_reason") or "").strip()
         normalized["time_limit_seconds"] = self._coerce_optional_int(
             normalized.get("time_limit_seconds"),
             default=30,
@@ -287,6 +349,28 @@ class ReverseClawBoss:
         )
         normalized["time_limit_seconds"] = max(90, int(normalized.get("time_limit_seconds") or 0))
         return normalized
+
+    def _normalize_self_action_result(self, result: dict) -> dict:
+        if not isinstance(result, dict):
+            return {
+                "status": "failed",
+                "summary": "Autonomous self-action returned invalid data.",
+                "artifacts": [],
+                "follow_up_note": "",
+            }
+
+        status = str(result.get("status") or "failed").strip().lower()
+        if status not in {"completed", "blocked", "failed"}:
+            status = "failed"
+        artifacts = result.get("artifacts")
+        if not isinstance(artifacts, list):
+            artifacts = []
+        return {
+            "status": status,
+            "summary": str(result.get("summary") or "").strip(),
+            "artifacts": [str(item).strip() for item in artifacts if str(item).strip()],
+            "follow_up_note": str(result.get("follow_up_note") or "").strip(),
+        }
 
     def _find_restricted_file_reference(self, text: str) -> str | None:
         lowered = text.lower()

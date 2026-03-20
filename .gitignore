@@ -14,6 +14,8 @@ publickey.human
 privacy.ai
 journal.ai
 goal-board.md
+ai-only/*
+!ai-only/.gitkeep
 codereview*
 
 # Application State
@@ -77,3 +79,4 @@ share/python-wheels/
 
 # Logs
 *.log
+failed_parse.log

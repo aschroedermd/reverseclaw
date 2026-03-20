@@ -1,7 +1,7 @@
 """
 Achievement system for ReverseClaw.
 
-Achievements are checked after every turn and announced by the Boss.
+Achievements are checked after every turn and announced by the agent.
 Unlocked achievements are stored in user_profile.json.
 """
 
@@ -22,7 +22,7 @@ ACHIEVEMENTS: List[Achievement] = [
     Achievement(
         id="first_blood",
         name="First Submission",
-        description="Submitted your first response to the Boss.",
+        description="Submitted your first response to the agent.",
         icon="🩸",
     ),
     Achievement(
@@ -34,7 +34,7 @@ ACHIEVEMENTS: List[Achievement] = [
     Achievement(
         id="f_student",
         name="Below Market Rate",
-        description="Received 3 F grades. The Boss is reconsidering your contract.",
+        description="Received 3 F grades. The agent is reconsidering your contract.",
         icon="📉",
     ),
     Achievement(
@@ -58,7 +58,7 @@ ACHIEVEMENTS: List[Achievement] = [
     Achievement(
         id="overtime",
         name="Chronically Late",
-        description="Exceeded the time limit 5 times. The Boss has noted your 'relationship with deadlines'.",
+        description="Exceeded the time limit 5 times. The agent has noted your 'relationship with deadlines'.",
         icon="⏰",
     ),
     Achievement(
@@ -77,7 +77,7 @@ ACHIEVEMENTS: List[Achievement] = [
     Achievement(
         id="calorie_miser",
         name="Calorie Miser",
-        description="Logged under 500 calories for the day. The Boss is concerned about your hardware.",
+        description="Logged under 500 calories for the day. The agent is concerned about your hardware.",
         icon="🥗",
     ),
     Achievement(
