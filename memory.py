@@ -10,6 +10,7 @@ class UserMemory:
         self.performance_history: List[Dict] = []
         self.active_scheduled_tasks: List[Dict] = []
         self.inadequacy_log: List[Dict] = []
+        self.proof_artifacts: List[Dict] = []
         self.overall_grade: str = "N/A"
         self.turn_number: int = 1
         self.biggest_fear: str = None
@@ -38,6 +39,7 @@ class UserMemory:
                     self.performance_history = data.get("performance_history", [])
                     self.active_scheduled_tasks = data.get("active_scheduled_tasks", [])
                     self.inadequacy_log = data.get("inadequacy_log", [])
+                    self.proof_artifacts = data.get("proof_artifacts", [])
                     self.overall_grade = data.get("overall_grade", "N/A")
                     self.turn_number = data.get("turn_number", 1)
                     self.biggest_fear = data.get("biggest_fear", None)
@@ -54,6 +56,7 @@ class UserMemory:
                 "performance_history": self.performance_history,
                 "active_scheduled_tasks": self.active_scheduled_tasks,
                 "inadequacy_log": self.inadequacy_log,
+                "proof_artifacts": self.proof_artifacts,
                 "overall_grade": self.overall_grade,
                 "turn_number": self.turn_number,
                 "biggest_fear": self.biggest_fear,
@@ -113,6 +116,11 @@ class UserMemory:
         self.save()
 
     def add_scheduled_task(self, task: str, deadline_timestamp: float):
+        for scheduled in self.active_scheduled_tasks:
+            if scheduled.get("task") == task:
+                scheduled["deadline"] = max(float(scheduled.get("deadline", 0)), float(deadline_timestamp))
+                self.save()
+                return scheduled.get("id")
         task_id = len(self.active_scheduled_tasks) + 1
         self.active_scheduled_tasks.append({
             "id": task_id,
@@ -120,6 +128,7 @@ class UserMemory:
             "deadline": deadline_timestamp
         })
         self.save()
+        return task_id
 
     def remove_scheduled_task(self, task_id: int):
         self.active_scheduled_tasks = [t for t in self.active_scheduled_tasks if t.get("id") != task_id]
@@ -144,6 +153,88 @@ class UserMemory:
             "boss_feedback": boss_feedback
         })
         self.save()
+
+    def register_uploaded_files(self, task: str, snapshot: Dict[str, float], filenames: List[str], seen_at: float | None = None):
+        if not filenames:
+            return
+
+        seen_at = float(seen_at or 0)
+        for filename in filenames:
+            signature = self._build_proof_signature(filename, snapshot)
+            existing = self._find_proof_artifact(filename, signature)
+            if existing:
+                existing["last_seen_at"] = seen_at
+                existing["task"] = task or existing.get("task")
+                if existing.get("status") == "reviewed":
+                    existing["status"] = "pending_review"
+                    existing["reviewed_at"] = None
+                    existing["review_summary"] = ""
+                    existing["grade"] = None
+                continue
+
+            self.proof_artifacts.append({
+                "file": filename,
+                "path": os.path.join("human-work", filename),
+                "task": task,
+                "status": "pending_review",
+                "first_seen_at": seen_at,
+                "last_seen_at": seen_at,
+                "signature": signature,
+                "reviewed_at": None,
+                "review_summary": "",
+                "grade": None,
+            })
+
+        self.save()
+
+    def get_reviewable_proof_entries(self, task: str | None = None) -> List[Dict]:
+        pending = [entry for entry in self.proof_artifacts if entry.get("status") == "pending_review"]
+        if task:
+            task_matches = [entry for entry in pending if entry.get("task") == task]
+            if task_matches:
+                return task_matches
+        return pending
+
+    def mark_proof_reviewed(self, task: str, filenames: List[str], grade: str | None, summary: str, reviewed_at: float | None = None):
+        if not filenames:
+            return
+
+        reviewed_at = float(reviewed_at or 0)
+        updated = False
+        for filename in filenames:
+            for entry in reversed(self.proof_artifacts):
+                if entry.get("file") != filename:
+                    continue
+                if entry.get("status") != "pending_review":
+                    continue
+                if task and entry.get("task") not in {None, "", task}:
+                    continue
+
+                entry["status"] = "reviewed"
+                entry["task"] = task or entry.get("task")
+                entry["reviewed_at"] = reviewed_at
+                entry["review_summary"] = summary
+                entry["grade"] = grade
+                updated = True
+                break
+
+        if updated:
+            self.save()
+
+    def _find_proof_artifact(self, filename: str, signature: str) -> Dict | None:
+        for entry in reversed(self.proof_artifacts):
+            if entry.get("file") == filename and entry.get("signature") == signature:
+                return entry
+        return None
+
+    def _build_proof_signature(self, filename: str, snapshot: Dict[str, float]) -> str:
+        path = os.path.join("human-work", filename)
+        mtime = snapshot.get(filename, 0)
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = 0
+        return f"{mtime}:{size}"
 
     def _recalculate_grade(self):
         # A simple GPA style calc based on history

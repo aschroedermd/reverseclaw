@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -92,11 +93,52 @@ def build_context(memory, autonomy_context=None):
         "total_tokens": memory.total_tokens_generated,
         "total_calories": memory.total_calories_consumed,
         "uploaded_files": [],
+        "uploaded_file_summaries": [],
         "active_scheduled_tasks": memory.active_scheduled_tasks,
         "inadequacy_log": memory.inadequacy_log,
         "human_md": memory.read_human_md(),
         "autonomy_context": autonomy_context or {},
     }
+
+
+def summarize_uploaded_files(file_names):
+    summaries = []
+    for file_name in file_names:
+        path = os.path.join(WORK_DIR, file_name)
+        if not os.path.isfile(path):
+            continue
+
+        try:
+            size = os.path.getsize(path)
+            modified_at = os.path.getmtime(path)
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                excerpt = f.read(800)
+        except OSError:
+            continue
+
+        excerpt = re.sub(r"\s+", " ", excerpt).strip()
+        if len(excerpt) > 240:
+            excerpt = excerpt[:237] + "..."
+
+        summaries.append({
+            "file": file_name,
+            "path": os.path.join(WORK_DIR, file_name),
+            "size_bytes": size,
+            "modified_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(modified_at)),
+            "excerpt": excerpt,
+        })
+    return summaries
+
+
+def build_proof_review_summary(response, reviewed_at: float):
+    timestamp = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(reviewed_at))
+    grade = response.get("grade_for_last_task") or "ungraded"
+    speech = re.sub(r"\s+", " ", str(response.get("speech") or "")).strip()
+    if len(speech) > 160:
+        speech = speech[:157] + "..."
+    if not speech:
+        speech = "Evidence reviewed."
+    return f"{timestamp} | grade {grade} | {speech}"
 
 
 def coerce_human_checkin_response(response: dict, autonomous_steps: int) -> dict:
@@ -713,6 +755,14 @@ def main():
             console.print(
                 f"[bold cyan]>> Detected new/modified proof:[/bold cyan] {', '.join(uploaded_files)}"
             )
+            memory.register_uploaded_files(next_task, post_snapshot, uploaded_files, seen_at=end_time)
+
+        reviewable_entries = memory.get_reviewable_proof_entries(next_task)
+        reviewable_files = [entry.get("file") for entry in reviewable_entries if entry.get("file")]
+        if reviewable_files and not uploaded_files:
+            console.print(
+                f"[bold cyan]>> Pending unreviewed proof available:[/bold cyan] {', '.join(reviewable_files)}"
+            )
 
         if time_limit and time_taken > time_limit:
             console.print(f"[bold red]TOO SLOW![/bold red] Took {time_taken:.1f}s (limit: {time_limit}s).")
@@ -745,7 +795,7 @@ def main():
             "last_task": next_task,
             "user_input": user_input,
             "time_taken_seconds": round(time_taken, 2),
-            "uploaded_files": uploaded_files,
+            "uploaded_files": reviewable_files,
             "excuse_info": excuse_info,
         }
 
@@ -762,7 +812,8 @@ def main():
                 console.print(f"[dim]{autonomy.heartbeat_status_line()}[/dim]")
 
         context = build_context(memory, autonomy_context=autonomy.build_context())
-        context["uploaded_files"] = uploaded_files
+        context["uploaded_files"] = reviewable_files
+        context["uploaded_file_summaries"] = summarize_uploaded_files(reviewable_files)
 
         with console.status("[dim]The agent is evaluating your work...[/dim]", spinner="bouncingBar"):
             response = boss.evaluate_and_next(
@@ -771,7 +822,16 @@ def main():
 
         memory.increment_turn()
 
-        new_grade = response.get("grade_for_last_task", "F")
+        if reviewable_files and not response.get("_response_generation_failed"):
+            memory.mark_proof_reviewed(
+                next_task,
+                reviewable_files,
+                response.get("grade_for_last_task"),
+                build_proof_review_summary(response, reviewed_at=end_time),
+                reviewed_at=end_time,
+            )
+
+        new_grade = response.get("grade_for_last_task")
         if new_grade:
             memory.add_performance(next_task, new_grade, time_taken, response.get("speech", ""), time_limit)
         autonomy.record_task_outcome(

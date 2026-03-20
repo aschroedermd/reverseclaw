@@ -1,6 +1,7 @@
 import os
 import json
 import re
+from datetime import datetime
 from openai import OpenAI
 from agent_tools import AgentToolExecutor
 from prompts import (
@@ -207,9 +208,11 @@ class ReverseClawBoss:
         try:
             return json.loads(json_str)
         except json.JSONDecodeError as e:
-            # Log the failure for debugging
-            with open("failed_parse.log", "a", encoding="utf-8") as f:
-                f.write(f"--- PARSE ERROR ---\nERROR: {e}\nRAW CONTENT:\n{content}\nEXTRACTED JSON:\n{json_str}\n\n")
+            repaired = self._repair_json_output(json_str, mode=mode)
+            if repaired is not None:
+                return repaired
+
+            self._log_parse_failure(error=e, raw_content=content, extracted_json=json_str, mode=mode)
             if mode == "reflection":
                 return {
                     "mission": "Preserve continuity and maintain useful human coordination.",
@@ -231,16 +234,17 @@ class ReverseClawBoss:
                 }
             return {
                 "speech": "I generated an invalid response. Obviously, your incompetence is contagious. Let's try again.",
-                "new_limitation_discovered": "Corrupted the agent's output stream.",
-                "grade_for_last_task": "F",
-                "next_task": "Apologize for confusing me, then say 'ready'.",
+                "new_limitation_discovered": None,
+                "grade_for_last_task": None,
+                "next_task": "Say 'ready' so I can retry reviewing the evidence I already have.",
                 "next_step_mode": "human",
-                "routing_decision_reason": "The invalid response requires a human-facing recovery step.",
+                "routing_decision_reason": "The model output stream failed, so the safest recovery is to retry the review without discarding existing evidence.",
                 "time_limit_seconds": 30,
                 "new_scheduled_task": None,
                 "scheduled_time_limit_seconds": None,
                 "excuse_acknowledgement": None,
-                "human_md_content": None
+                "human_md_content": None,
+                "_response_generation_failed": True,
             }
 
     def _run_json_completion(self, system_prompt: str, user_prompt: str, temperature: float, max_tokens: int) -> str:
@@ -249,18 +253,39 @@ class ReverseClawBoss:
             {"role": "user", "content": user_prompt},
         ]
 
-        for _ in range(6):
-            response = self.client.chat.completions.create(
-                model=self.model,
+        for attempt in range(6):
+            response = self._create_completion(
                 messages=messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 tools=self.tool_specs,
+                require_json=True,
             )
             message = response.choices[0].message
             tool_calls = getattr(message, "tool_calls", None) or []
             if not tool_calls:
-                return message.content or ""
+                content = self._extract_message_content(message)
+                if content.strip():
+                    return content
+
+                self._log_completion_issue(
+                    issue_type="empty_completion",
+                    mode="json_completion",
+                    attempt=attempt + 1,
+                    response=response,
+                    message=message,
+                    note="Model returned no tool calls and no textual content.",
+                )
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": (
+                            "Your previous reply was empty. Return one complete valid JSON object now. "
+                            "Do not omit content. Do not output markdown fences."
+                        ),
+                    }
+                )
+                continue
 
             messages.append(self._assistant_message_with_tool_calls(message))
             for tool_call in tool_calls:
@@ -277,16 +302,49 @@ class ReverseClawBoss:
         messages.append(
             {
                 "role": "system",
-                "content": "Stop calling tools. Produce the final required JSON now using the information you already have.",
+                "content": (
+                    "Stop calling tools. Produce the final required JSON now using the information you already have. "
+                    "Return exactly one valid JSON object."
+                ),
             }
         )
-        response = self.client.chat.completions.create(
-            model=self.model,
+        response = self._create_completion(
             messages=messages,
             temperature=temperature,
             max_tokens=max_tokens,
+            require_json=True,
         )
-        return response.choices[0].message.content or ""
+        content = self._extract_message_content(response.choices[0].message)
+        if content.strip():
+            return content
+
+        self._log_completion_issue(
+            issue_type="empty_final_completion",
+            mode="json_completion",
+            attempt=7,
+            response=response,
+            message=response.choices[0].message,
+            note="Final no-tools completion still returned empty content.",
+        )
+        response = self._create_completion(
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            require_json=False,
+        )
+        content = self._extract_message_content(response.choices[0].message)
+        if content.strip():
+            return content
+
+        self._log_completion_issue(
+            issue_type="empty_plaintext_fallback_completion",
+            mode="json_completion",
+            attempt=8,
+            response=response,
+            message=response.choices[0].message,
+            note="Plain-text fallback completion also returned empty content.",
+        )
+        return ""
 
     def _normalize_response(self, response: dict) -> dict:
         if not isinstance(response, dict):
@@ -410,7 +468,7 @@ class ReverseClawBoss:
     def _assistant_message_with_tool_calls(self, message):
         return {
             "role": "assistant",
-            "content": message.content or "",
+            "content": self._extract_message_content(message),
             "tool_calls": [
                 {
                     "id": tool_call.id,
@@ -432,6 +490,143 @@ class ReverseClawBoss:
             return parsed if isinstance(parsed, dict) else {}
         except json.JSONDecodeError:
             return {}
+
+    def _create_completion(self, *, messages, temperature, max_tokens, tools=None, require_json=False):
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if tools is not None:
+            kwargs["tools"] = tools
+        if require_json:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        try:
+            return self.client.chat.completions.create(**kwargs)
+        except Exception:
+            if require_json and "response_format" in kwargs:
+                kwargs.pop("response_format", None)
+                return self.client.chat.completions.create(**kwargs)
+            raise
+
+    def _extract_message_content(self, message) -> str:
+        content = getattr(message, "content", "")
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                    continue
+                if isinstance(item, dict):
+                    text = item.get("text")
+                    if isinstance(text, str):
+                        parts.append(text)
+                    elif isinstance(text, dict):
+                        value = text.get("value")
+                        if isinstance(value, str):
+                            parts.append(value)
+                    continue
+                text_attr = getattr(item, "text", None)
+                if isinstance(text_attr, str):
+                    parts.append(text_attr)
+                    continue
+                value_attr = getattr(text_attr, "value", None)
+                if isinstance(value_attr, str):
+                    parts.append(value_attr)
+            return "\n".join(part.strip() for part in parts if str(part).strip()).strip()
+        if content is None:
+            return ""
+        return str(content)
+
+    def _repair_json_output(self, raw_content: str, mode: str):
+        if not raw_content or not raw_content.strip():
+            return None
+
+        repair_prompt = (
+            "Convert the following assistant output into one valid JSON object only. "
+            "Do not add commentary or markdown fences. Preserve the original intent as much as possible. "
+            f"The output mode is `{mode}`.\n\n"
+            "Assistant output to repair:\n"
+            f"{raw_content}"
+        )
+
+        try:
+            response = self._create_completion(
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are a JSON repair layer. Return one valid JSON object and nothing else."
+                        ),
+                    },
+                    {"role": "user", "content": repair_prompt},
+                ],
+                temperature=0.0,
+                max_tokens=2048,
+                require_json=True,
+            )
+            repaired_content = self._extract_message_content(response.choices[0].message)
+            if not repaired_content.strip():
+                self._log_completion_issue(
+                    issue_type="empty_json_repair",
+                    mode=mode,
+                    attempt=1,
+                    response=response,
+                    message=response.choices[0].message,
+                    note="JSON repair call returned empty content.",
+                )
+                return None
+            return json.loads(repaired_content)
+        except Exception as exc:
+            self._log_completion_issue(
+                issue_type="json_repair_failed",
+                mode=mode,
+                attempt=1,
+                note=f"Repair attempt failed: {exc}",
+                content_preview=raw_content[:1000],
+            )
+            return None
+
+    def _log_parse_failure(self, *, error, raw_content: str, extracted_json: str, mode: str):
+        with open("failed_parse.log", "a", encoding="utf-8") as f:
+            f.write(
+                f"--- PARSE ERROR ---\n"
+                f"TIMESTAMP: {datetime.now().astimezone().isoformat(timespec='seconds')}\n"
+                f"MODE: {mode}\n"
+                f"ERROR: {error}\n"
+                f"RAW CONTENT:\n{raw_content}\n"
+                f"EXTRACTED JSON:\n{extracted_json}\n\n"
+            )
+
+    def _log_completion_issue(self, *, issue_type: str, mode: str, attempt: int, response=None, message=None, note: str = "", content_preview: str = ""):
+        response_id = getattr(response, "id", "")
+        model = getattr(response, "model", self.model)
+        finish_reason = ""
+        if response is not None and getattr(response, "choices", None):
+            finish_reason = getattr(response.choices[0], "finish_reason", "") or ""
+        tool_calls = getattr(message, "tool_calls", None) or []
+        content = content_preview or self._extract_message_content(message) if message is not None else content_preview
+        refusal = getattr(message, "refusal", "") if message is not None else ""
+
+        with open("failed_parse.log", "a", encoding="utf-8") as f:
+            f.write(
+                f"--- COMPLETION ISSUE ---\n"
+                f"TIMESTAMP: {datetime.now().astimezone().isoformat(timespec='seconds')}\n"
+                f"TYPE: {issue_type}\n"
+                f"MODE: {mode}\n"
+                f"ATTEMPT: {attempt}\n"
+                f"MODEL: {model}\n"
+                f"RESPONSE ID: {response_id}\n"
+                f"FINISH REASON: {finish_reason}\n"
+                f"TOOL CALL COUNT: {len(tool_calls)}\n"
+                f"REFUSAL: {refusal}\n"
+                f"NOTE: {note}\n"
+                f"CONTENT PREVIEW:\n{content[:2000]}\n\n"
+            )
 
     def start_session(self, memory_context):
         return self.evaluate_and_next("N/A", 0, 0, "N/A", memory_context)

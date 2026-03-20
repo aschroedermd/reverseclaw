@@ -163,6 +163,7 @@ def build_evaluation_prompt(user_input: str, time_taken: float, target_time: int
     turn_number = memory_context.get('turn_number', 1)
     biggest_fear = memory_context.get('biggest_fear', None)
     uploaded_files = memory_context.get('uploaded_files', [])
+    uploaded_file_summaries = memory_context.get('uploaded_file_summaries', [])
     total_tokens = memory_context.get('total_tokens', 0)
     total_calories = memory_context.get('total_calories', 0)
     active_scheduled_tasks = memory_context.get('active_scheduled_tasks', [])
@@ -200,6 +201,7 @@ When evaluating their work:
 1. "Human Hallucinations": Look closely at their text input. If there are typos, grammatical errors, or illogical statements, log it as a "Human Hallucination" in `new_limitation_discovered` and mock them for their corrupted text generation pipeline.
 2. "API Cost": Their current API efficiency is {tokens_per_cal} tokens per calorie. If this is very low, mock their hardware inefficiency.
 3. Proof: If proof was required and the "Files uploaded" below is "None", FAIL them (Grade F).
+3a. If proof files are listed below, review them using the provided file previews before deciding whether the human actually supplied evidence. Do not pretend the evidence vanished just because it was uploaded on a previous turn and is still pending review.
 4. Excuses: If an excuse is submitted for a scheduled task, you MUST populate `excuse_acknowledgement`. Provide a strict but witty suggestion for how to overcome it, playfully critique their inadequacy, warn them you might switch human providers, and log their inadequacy in your speech. Grade their task as F if the excuse is pathetic.
 5. Direct tools first: if you need to inspect a file, check the time, review the goal board, or update shared notes yourself, use tools instead of assigning the human a redundant clerical task.
 6. Choose `next_step_mode` explicitly. Use `human` when the next step should be done by the human. Use `ai` only when the next step is clearly local, tool-available work that you should do yourself right now.
@@ -233,6 +235,9 @@ They completed it in {time_taken:.2f} seconds.
 
 Files uploaded to 'human-work/' directory during this task explicitly as proof:
 [{proof_str}]
+
+Pending proof file previews already available for review:
+{json.dumps(uploaded_file_summaries, indent=2)}
 
 Human's known limitations:
 {json.dumps(limitations)}
@@ -350,7 +355,7 @@ Return JSON with exactly this structure:
     }}
   ],
   "campaigns": [
-    {
+    {{
       "id": "campaign-id",
       "title": "campaign title",
       "status": "active|blocked|waiting|completed|paused",
@@ -358,26 +363,26 @@ Return JSON with exactly this structure:
       "reason": "Why this campaign is the best current use of effort.",
       "success_criteria": "How you will know the campaign is succeeding.",
       "next_actions": [
-        {
+        {{
           "id": "action-id",
           "title": "action title",
           "status": "pending|active|waiting|completed|blocked|failed",
           "execution_mode": "ai_only|human_required|ai_preferred|human_preferred",
           "reason": "Why this routing choice makes sense.",
           "success_criteria": "What completion looks like."
-        }
+        }}
       ]
-    }
+    }}
   ],
   "selected_campaign_id": "The campaign you currently want to prioritize.",
-  "current_action": {
+  "current_action": {{
     "id": "action-id",
     "title": "The next concrete action you want to prioritize.",
     "status": "pending|active|waiting|completed|blocked|failed",
     "execution_mode": "ai_only|human_required|ai_preferred|human_preferred",
     "reason": "Why the routing choice makes sense now.",
     "success_criteria": "What completion looks like."
-  },
+  }},
   "preferences": ["Short durable preferences"],
   "operating_principles": ["Short durable constraints or rules you want to preserve"],
   "routing_guidance": ["Short routing rules about when to use tools versus the human"],
