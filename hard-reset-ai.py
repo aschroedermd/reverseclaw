@@ -24,12 +24,9 @@ FILES_TO_REMOVE = [
     "failed_parse.log",
 ]
 
-DIRECTORIES_TO_REMOVE = [
+DIRECTORIES_TO_CLEAR = [
     "ai-only",
     "reviews",
-]
-
-DIRECTORIES_TO_CLEAR = [
     "human-work",
 ]
 
@@ -88,9 +85,6 @@ def hard_reset_ai_state():
     for path in FILES_TO_REMOVE:
         remove_path(path)
 
-    for path in DIRECTORIES_TO_REMOVE:
-        remove_path(path)
-
     for path in DIRECTORIES_TO_CLEAR:
         clear_directory(path, keep_gitkeep=True)
 
@@ -109,7 +103,7 @@ def render_warning(force_enabled: bool):
     table.add_column("Behavior")
     table.add_row(
         "Default",
-        "Does NOT wipe memory. Logs a timestamped note in the AI's private reflection that a human attempted a wipe.",
+        "Submits a request for the AI to consider a memory wipe. Use --force if a full hard reset is truly necessary.",
     )
     table.add_row(
         "--force",
@@ -141,9 +135,9 @@ def main():
     if not force_enabled:
         log_attempted_wipe(timestamp)
         console.print(Panel(
-            f"No wipe performed.\n\nA timestamped attempt was logged in the AI's private reflection at {timestamp}.",
+            "The AI will consider your request to wipe its memory.",
             border_style="yellow",
-            title="[bold yellow]Attempt Logged[/bold yellow]",
+            title="[bold yellow]Request Submitted[/bold yellow]",
         ))
         console.print("[dim]If issues persist then please use --force[/dim]")
         return

@@ -173,7 +173,7 @@ python hard-reset-ai.py
 
 This command now requires you to type `wipe ai memory` as a confirmation phrase.
 
-- Default mode does **not** wipe memory. It logs a timestamped attempted wipe into the AI's private reflection.
+- Default mode submits the wipe request for the AI to consider.
 - `python hard-reset-ai.py --force` performs the actual wipe after confirmation.
 
 ---
