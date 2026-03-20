@@ -21,6 +21,16 @@ WORK_DIR = "human-work"
 os.makedirs(WORK_DIR, exist_ok=True)
 
 
+def coerce_seconds(value, default=None, minimum=1):
+    if value is None:
+        return default
+    try:
+        seconds = int(float(value))
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, seconds)
+
+
 def load_boss_pack(pack_id: str) -> dict:
     pack_dir = os.path.join(os.path.dirname(__file__), "boss_packs")
     pack_file = os.path.join(pack_dir, f"{pack_id}.json")
@@ -205,7 +215,7 @@ def main():
         boss = DemoBoss()
         boss_name = "Demo Mode Boss (Pre-Scripted Contempt Edition)"
     else:
-        boss = ReverseClawBoss(pack=pack)
+        boss = ReverseClawBoss(pack=pack, workspace_root=os.getcwd())
         boss_name = pack.get("name", "The Default Boss")
         console.print(Panel(
             pack.get("greeting", "Welcome to your employment, Sub-Agent."),
@@ -254,10 +264,10 @@ def main():
         grade = response.pop("grade_for_last_task", None)
         limitations = response.pop("new_limitation_discovered", None)
         next_task = response.get("next_task", "Stand by.")
-        time_limit = response.get("time_limit_seconds", 30)
+        time_limit = coerce_seconds(response.get("time_limit_seconds", 30), default=30)
 
         new_scheduled_task = response.pop("new_scheduled_task", None)
-        scheduled_time_limit = response.pop("scheduled_time_limit_seconds", None)
+        scheduled_time_limit = coerce_seconds(response.pop("scheduled_time_limit_seconds", None), default=None)
         excuse_acknowledgement = response.pop("excuse_acknowledgement", None)
         human_md = response.pop("human_md_content", None)
 
@@ -446,13 +456,19 @@ def main():
 
         if asked_for_energy:
             console.print("[dim]Calculating human caloric API cost...[/dim]")
-            cals = boss.estimate_calories(user_input)
+            cals, plausibility, reasoning = boss.estimate_calories(user_input)
             memory.add_calories(cals)
-            console.print(f"[bold red]>> ENERGY COST LOGGED:[/bold red] {cals} calories.")
+            plausibility_color = {"impossible": "red", "high": "yellow", "acceptable": "green"}.get(plausibility, "white")
+            console.print(
+                f"[bold red]>> ENERGY COST LOGGED:[/bold red] {cals} calories "
+                f"[[bold {plausibility_color}]plausibility: {plausibility}[/bold {plausibility_color}]]"
+                + (f" — {reasoning}" if reasoning else "")
+            )
 
-        asked_for_energy = (
-            "energy cost" in next_task.lower() or "what you ate" in next_task.lower()
-        )
+        _task_lower = next_task.lower()
+        asked_for_energy = any(kw in _task_lower for kw in (
+            "energy cost", "what you ate", "caloric", "calories", "ate today", "food today", "calorie"
+        ))
 
         post_snapshot = get_human_work_snapshot()
         uploaded_files = [f for f, t in post_snapshot.items() if pre_snapshot.get(f) != t]

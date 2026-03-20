@@ -157,6 +157,6 @@ class DemoBoss:
         self._turn += 1
         return response
 
-    def estimate_calories(self, food_string: str) -> int:
+    def estimate_calories(self, food_string: str) -> tuple[int, str, str]:
         # In demo mode, assume maximum mediocrity
-        return 2000
+        return 2000, "acceptable", "Demo mode assumes standard human mediocrity."

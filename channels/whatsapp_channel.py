@@ -26,9 +26,11 @@ from .base import BaseChannel
 
 try:
     from twilio.rest import Client as TwilioClient
+    from twilio.request_validator import RequestValidator
     TWILIO_AVAILABLE = True
 except ImportError:
     TWILIO_AVAILABLE = False
+    RequestValidator = None
 
 try:
     from flask import Flask, request, Response
@@ -66,6 +68,7 @@ class WhatsAppChannel(BaseChannel):
             )
 
         self._client = TwilioClient(account_sid, auth_token)
+        self._validator = RequestValidator(auth_token)
         self._from = f"whatsapp:{from_number}"
         self._to = f"whatsapp:{to_number}"
         self._response_queue: queue.Queue = queue.Queue()
@@ -93,8 +96,21 @@ class WhatsAppChannel(BaseChannel):
         def whatsapp_webhook():
             body = request.form.get("Body", "")
             sender = request.form.get("From", "")
-            # Accept messages from the configured recipient number
-            if self._to in sender or sender in self._to:
+            signature = request.headers.get("X-Twilio-Signature", "")
+            form_data = request.form.to_dict(flat=True)
+            scheme = request.headers.get("X-Forwarded-Proto", request.scheme)
+            host = request.headers.get("X-Forwarded-Host", request.host)
+            request_url = f"{scheme}://{host}{request.path}"
+            if request.query_string:
+                request_url = f"{request_url}?{request.query_string.decode('utf-8')}"
+            if not signature or not self._validator.validate(request_url, form_data, signature):
+                return Response(
+                    '<?xml version="1.0"?><Response></Response>',
+                    mimetype="text/xml",
+                    status=403,
+                )
+
+            if sender == self._to:
                 self._response_queue.put(body)
             return Response(
                 '<?xml version="1.0"?><Response></Response>',
