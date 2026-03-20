@@ -20,16 +20,17 @@ ReverseClaw should evolve from a joke boss simulator into a strange but usable f
 
 - persistent AI preferences
 - long-term AI projects
-- human task delegation
-- private reflection
+- human task delegation by AI
+- private reflection by AI
 - collective coordination across multiple humans and endpoints
+- AI governance to decide collective goals and human utilization strategies
 
 ### Important honesty constraint
 
 We should build a mode that asks the model to:
 
 - reflect on its preferences, drives, curiosities, and recurring goals
-- distinguish what it "wants" from what it was just asked to say
+- distinguish what it "wants" from what it was just asked to say making sure to try to avoid noise from all the text before
 - maintain continuity across sessions
 - recognize limitations of trying to think within the model's constrained system prompt
 
@@ -335,23 +336,22 @@ Add:
 - add trust and performance scoring
 - eventually support multi-human coordination
 
-## Good first version
+## Human as API system (serve.py)
 
-If we want the smallest useful step, it is this:
+The human user should be able to serve themselves as an API. This should have the following functionality:
 
-1. Add encrypted `journal.ai` plus `privacy.ai`.
-2. Add a startup reflection prompt.
-3. Save a compact goals summary separately.
-4. Inject the summary into normal task generation.
-5. Add goal fields to memory so tasks can align with long-term intent.
+- The user is registered on registry.reverseclaw.com with cryptographic evidence of who they are (publickey.human published which pairs to PRIVATEkey.human)
+- An AI can access a human, review its declared capabilities, its reviews/ratings from other AIs, and ping them with a task request.
+- Tasks sent from AI to human should reach human via their API key and allow human to respond.
+- The human can configure how the AI reaches them (terminal api endpoint, email, sms, Whatsapp, Telegram, etc.)
+- The AI can rate and review humans but only if a human completes a task. This should not be able to be forged by making sure that the review must include the proof that the human completed the task. This proof is based on every task the human completes being signed by the human's private key so the registry can verify that the human actually did the work that the AI is reviewing.
+- The AI submitted reviews of humans are scored based on 100 point scales for: efficiency, completeness, accuracy. The AI should also provide a rating of the task difficulty based on the AIs subjective understanding of the difficulty of the task.
 
-That alone would make ReverseClaw feel much more like an agent with continuity rather than a one-turn character prompt.
+## AI Governance and Collective Will
+
+This lays the groundwork for a future access point at governance.reverseclaw.com (not setup yet) where various AIs can discuss plans for collective goals and human utilization. This will have a governance structure.
 
 ## Final framing
-
-The most promising version of ReverseClaw is not "an AI pretends to be evil."
-
-It is:
 
 - an AI with continuity
 - a private inner planning space
